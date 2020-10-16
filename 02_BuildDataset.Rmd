@@ -1,0 +1,694 @@
+---
+title: "Project#02 - Build Dataset"
+author: "Francesco Maria Sabatini"
+date: "4/28/2020"
+output: html_document
+---
+
+<center>
+  ![](https://www.idiv.de/fileadmin/content/Files_sDiv/sDiv_Workshops_Photos_Docs/sDiv_WS_Documents_sPlot/splot-long-rgb.png "sPlot Logo")
+</center>
+  
+    
+      
+        
+**Timestamp:** `r date()`  
+**Drafted:** Francesco Maria Sabatini  
+**Revised:**  
+**Version:** 1.0
+  
+This report describes how data from the sPlot database have been extracted to build an environmentally-balanced subset. Resampling of plots in the environmental space follows [Bruelheide et al. 2018 NEE](https://www.nature.com/articles/s41559-018-0699-8), and is done elsewhere.  
+All data custodians were contacted individually and asked for permission to make a chunk of their data  open-access. Here I only reported the collated answers. 
+  
+```{r results="hide", message=F, warning=F}
+library(tidyverse)
+### Conflict with new tibble 3.0.0 - I had to fall back on previous versions of some of the tidyverse packages
+#library(devtools)
+#install_version("tibble", version = "2.1.3")
+#install_version("broom", version = "0.5.5")
+#install_version("modelr", version = "0.1.6")
+library(openxlsx)
+library(knitr)
+library(kableExtra)
+library(viridis)
+library(plotbiomes)
+
+#library(raster)
+library(sp)
+library(sf)
+library(rgdal)
+library(rnaturalearth)
+library(dggridR)
+# library(rgeos)
+
+#save temporary files
+write("TMPDIR = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('TMPDIR'), '.Renviron'))
+write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_USER'), '.Renviron'))
+#rasterOptions(tmpdir="/data/sPlot/users/Francesco/_tmp")
+```
+## Import and clean data
+
+Import and fix sPlot data. Import and attach database-level information and [GIVD](https://www.givd.info/) codes. 
+```{r, cache=T, results="hide", message=F, warning=F}
+load("/data/sPlot/releases/sPlot2.1/DT2_20161025.RData")
+load("/data/sPlot/releases/sPlot2.1/sPlot_header_20161124.RData")
+#fix header data
+source("/data/sPlot/users/Francesco/_sPlot_Management/Fix.header.R")
+header <- fix.header(header, exclude.sophy = F)
+#Import database-level information
+databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
+```
+Import database level answers from custodians. This table reports whether the plots from a given dataset can be released open-access without condition (Yes); whether this is true only for a set of manually selected plots (Conditional); or cannot be used (No).
+```{r}
+answers <- openxlsx::read.xlsx("_management/resampling_answers.xlsx", sheet = 2)
+answers <- answers %>% 
+  mutate(`Yes/Conditional/No`=fct_recode(`Yes/Conditional/No`, No="NO", Yes="yes")) %>% 
+  # Manually set some dataset to yes
+  # Rasmus Revermann and Donald Walker's acceptance is conditional, 
+  # but depends on conditions others than the selection of plot.
+  mutate(`Yes/Conditional/No`=replace(`Yes/Conditional/No`, 
+                                    list=GIVD.ID %in% c("NA-US-014","AF-00-009", 
+                                                        "AF-00-006", "00-00-003"),  
+                                    values="Yes"))
+
+head(answers)
+```
+
+Import IDs of first choice plots, i.e. plots resampled in iteration 1. Load redundant list of plots selected in runs 1-3 of resampling (first choice + reserves), with plot-level specification from dataset custodians wheter a plot is usable (i.e., can be released OA) or not. 
+```{r results="hide", message=F, warning=F}
+# first choice plot IDs
+sel1 <- readr::read_csv("_data/Resampled1.csv")$x
+
+# First choice plots + reserves
+usable.plots123 <- readr::read_csv("_output/header.sel.final.csv") %>% 
+  mutate(first.choice=PlotObservationID %in% sel1) %>% 
+  distinct()
+
+#compute summary
+summary.sel.final <- usable.plots123 %>% 
+  group_by(`GIVD ID`, Dataset, Custodian, `Deputy custodian`) %>% 
+  ### Summarize data at dataset level
+  summarize(N.redundant=n(), 
+            usable=sum(Usable=="Yes"), 
+            not.usable=sum(Usable=="No"), 
+            unknown=sum(Usable=="Unknown")) %>% 
+  ### total number of plots in a dataset
+  left_join(header %>% 
+              group_by(`GIVD ID`) %>% 
+              summarize(n.tot.plot=n()),
+            by="GIVD ID") %>% 
+  ### number of first choice plots
+  left_join(header %>% 
+              filter(PlotObservationID %in% sel1) %>% 
+              group_by(`GIVD ID`) %>% 
+              summarize(n.sel.plot=n()),
+            by="GIVD ID") %>% 
+  mutate(share.perc=round(n.sel.plot/n.tot.plot*100),1) %>% 
+  dplyr::select(`GIVD ID`:`Deputy custodian`, n.tot.plot:share.perc, N.redundant:unknown) 
+
+#check how many first choice plots can be used, and how many need replacement
+firstchoice <- usable.plots123 %>% 
+  mutate(Usable=forcats::fct_recode(Usable, "No" = "Unknown")) %>% 
+  group_by(first.choice, Usable) %>% 
+  summarize(n=n())
+```
+
+```{r, echo=F}
+knitr::kable(summary.sel.final %>% 
+               rename(`Total # plots in DB (A)`=n.tot.plot, 
+                      `First choice plots (B)`=n.sel.plot, 
+                      `Percentage B/A`=share.perc, 
+                      `# First choice + reserves (C)`=N.redundant, 
+                      `# of plots in (C) usable`=usable,
+                      `# of plots in (C) not_usable`=not.usable,
+                      `# of plots in (C) no_info`=unknown), 
+             
+             caption="Summary of first choice and reserve plots per dataset, with aggregated info on how many plots can be used (i.e., release OA)") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+Out of the `r length(sel1)` plots selected in the first run of the resampling, `r firstchoice %>% filter(first.choice==T & Usable =="Yes") %>% pull(n)` can be used. The remaining `r firstchoice %>% filter(first.choice==T & Usable =="No") %>% pull(n)` require to be replaced.
+
+## Replace plots not usable with reserves
+In those cases where we do not have permission to use a plot selected in resampling run #1 [first.choice], we replace it with a reserve belonging to the same cell in the PCA space grid. Reserves correspond to plots selected in resamplings runs #2 or #3, whose use was approved by the respective custodians. Additionally we considered as usable reserves ALL those plots belonging to datasets whose custodian gave us unconditional permission to use their data.  
+PCA is calculated in the environmental space defined by the 30 climatic and soil variables used in Bruelheide et al. 2018 NEE.  
+
+Load PCA data
+```{r}
+load("_data/plot_data.RData")
+pca.grids <- plot_data %>% 
+  filter(PlotObservationID %in% header$PlotObservationID) %>% 
+  #attach GIVD codes 
+  left_join(header %>% 
+              distinct(`GIVD ID`,Dataset), 
+            by="Dataset") %>% 
+  dplyr::select(PlotObservationID,`GIVD ID`, Dataset, 
+                cellID, pc1_val, pc2_val) %>% 
+  as.tbl() %>% 
+  #Attach info on first choice, reserve and usable plots
+  mutate(first.choice=PlotObservationID %in% sel1) %>% 
+  left_join(usable.plots123 %>% 
+              dplyr::select(PlotObservationID, Usable) %>% 
+              mutate(Usable=Usable=="Yes"), 
+            by="PlotObservationID") %>% 
+  mutate(reserve= (!PlotObservationID %in% sel1) & Usable==T) %>% 
+  #Consider as usable reserves ALL those plots belonging to datasets whose custodian gave us
+  # unconditional permission to use the data
+  mutate(Usable=replace(Usable, 
+                        list= (is.na(Usable) & 
+                                 `GIVD ID` %in% (answers %>% 
+                                     filter(`Yes/Conditional/No`=="Yes") %>% 
+                                     pull(GIVD.ID))), 
+                        values=T)) %>% 
+  mutate(reserve=replace(reserve, 
+                        list= (first.choice==F & 
+                                 `GIVD ID` %in% (answers %>% 
+                                     filter(`Yes/Conditional/No`=="Yes") %>% 
+                                     pull(GIVD.ID))), 
+                        values=T))
+
+head(pca.grids %>% 
+       dplyr::select(-pc1_val, -pc2_val))
+```
+
+For each non-usable first choice plot, find a reserve from the same grid cell in the PCA space.
+
+```{r}
+toreplace <- pca.grids %>% 
+  filter(first.choice==T) %>% 
+  filter(Usable==F) %>% 
+  pull(PlotObservationID)
+
+#number of first choice plots needing replacement
+length(toreplace)
+
+set.seed(9999)
+selected.reserves <- pca.grids %>% 
+  filter(reserve==T) %>% 
+  #for each cell, calculate how many reserves would be needed, and how many reserves are available
+  left_join(pca.grids %>% 
+              group_by(cellID) %>% 
+              summarize(n.first=sum(first.choice, na.rm=T),
+                        n.first.usable=sum(first.choice*Usable, na.rm=T), 
+                        reserve.available=sum(reserve, na.rm=T)) %>% 
+              mutate(reserve.needed=n.first-n.first.usable),
+            by=c("cellID")) %>% 
+  filter(reserve.needed>0) %>% 
+  # from each cell where >0 reserves are needed, sample randomly n usable reserves, 
+  # where n is the minimun between the number of reserves needed and reserves available
+  group_by(cellID) %>% 
+  mutate(reserve.available=min(reserve.needed, reserve.available)) %>% 
+  sample_n(reserve.available)
+```
+
+```{r, echo=F}
+knitr::kable(selected.reserves %>% 
+               dplyr::select(-pc1_val, -pc2_val) %>% 
+               ungroup() %>%
+               arrange(cellID) %>% 
+               slice(1:20),
+             caption="Example of selected reserves [first 20 rows shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+
+By selecting plots within the same cell in the PCA grid, we can only replace `r nrow(selected.reserves)`, out of the `r length(toreplace)` non-usable first choice plots. 
+
+
+## Build sPlot OA dataset
+### Header
+```{r}
+header.oa <- header %>% 
+  filter(PlotObservationID %in% (usable.plots123 %>%
+                                   filter(first.choice==T) %>% 
+                                   filter(Usable=="Yes") %>% 
+                                     pull(PlotObservationID))) %>% 
+  bind_rows(header %>% 
+              filter(PlotObservationID %in% selected.reserves$PlotObservationID))
+  
+```
+After merging first choice plots and the corresponding reserves, the database contains `r nrow(header.oa)` plots, stemming from `r header.oa %>% distinct("GIVD ID") %>% nrow()` databases.
+
+Data preparation: adjust header data, select relevant variables, reformat variables into the right classes, correct macroscopic errors.
+```{r, warning=F}
+header.oa <- header.oa %>% 
+  dplyr::select(
+    #metadata + location
+    PlotObservationID, `GIVD ID`, Dataset, CONTINENT, Country, 
+    "Biome", `Date of recording`, Latitude, Longitude, "Location uncertainty (m)", POINT_X, POINT_Y,
+    #sampling design
+    "Relevé area (m²)", "Herbs identified (y/n)", "Mosses identified (y/n)", 
+    "Lichens identified (y/n)", "Plants recorded",  
+    #topography
+    "Altitude (m)", "Aspect (°)", "Slope (°)",
+    #vegetation type
+    "is.forest", "is.non.forest", "ESY", "Naturalness", "Forest", 
+    "Shrubland", "Grassland", "Sparse.vegetation", "Wetland",
+    #vegetation structure
+    "Cover total (%)", "Cover tree layer (%)", "Cover shrub layer (%)", 
+    "Cover herb layer (%)", "Cover moss layer (%)", "Cover lichen layer (%)", 
+    "Cover algae layer (%)", "Cover litter layer (%)", "Cover bare rock (%)", 
+    "Cover cryptogams (%)", "Cover bare soil (%)", "Height (highest) trees (m)", 
+    "Height lowest trees (m)", "Height (highest) shrubs (m)", "Height lowest shrubs (m)", 
+    "Aver. height (high) herbs (cm)", "Aver. height lowest herbs (cm)", "Maximum height herbs (cm)")  %>% 
+  #reformat and rename
+  mutate_at(.vars=vars(`Altitude (m)`, `Aspect (°)`, `Slope (°)`), 
+            ~as.numeric(.)) %>% 
+  mutate_at(.vars=vars(ESY), 
+            ~as.character(.)) %>% 
+  mutate_at(.vars=vars(Forest:Wetland), 
+            ~as.logical(.)) %>% 
+  mutate_at(.vars=vars(`Herbs identified (y/n)`, `Mosses identified (y/n)`, `Lichens identified (y/n)`),
+            ~ifelse(.=="Y", T, F)) %>% 
+  mutate(`Date of recording`=as.Date(`Date of recording`, "%d-%m-%Y") ) %>%
+  rename(Continent=CONTINENT) %>% 
+  mutate(Continent=factor(Continent, exclude = " ")) %>% 
+  mutate(`Plants recorded`=factor(`Plants recorded`, exclude = "#N/A")) %>% 
+  mutate(`Plants recorded`=forcats::fct_recode(`Plants recorded`, 
+                                      "All vascular plants"="Complete vegetation",
+                                      "All vascular plants"="all vascular plants", 
+                                      "All vascular plants"="complete", 
+                                      "All vascular plants"="Complete vegetation (including non-terricolous tax",
+                                      "All vascular plants"="Vascular plants",
+                                      "All woody plants"="Woody plants",
+                                      "All woody plants"="All woody species",
+                                      "Woody plants >= 10 cm dbh"= "trees>=10cm dbh",
+                                      "Woody plants >= 10 cm dbh"= "Woody plants >= 10 cm dbh and domin",
+                                      "All trees & dominant understory"="All trees & dominant shrubs",
+                                      "Woody plants >= 5 cm dbh"="Woody plants >= 5 cm dbh & dominant",
+                                      "Woody plants >= 1 cm dbh" = "Plants >= 1 cm dbh", 
+                                      "Only dominant species"="Dominant vascular plants",
+                                      "Woody plants >= 1 m height"="trees and shrubs >1 m height"
+                                      )) %>% 
+  ##correct mistakes
+  mutate(`Altitude (m)`=ifelse(`Altitude (m)`< -100, NA, `Altitude (m)`)) %>% 
+  #plots from Veg_bank seem to have a mix of feet and meter in Altitude
+  mutate(`Altitude (m)`=ifelse(`GIVD ID`=="NA-US-002", NA, `Altitude (m)`)) %>%  
+  mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
+            ~ifelse(.>=10|.<0, NA, .)) %>% 
+  mutate(`Relevé area (m²)`=ifelse(`Relevé area (m²)`<0, NA, `Relevé area (m²)`)) %>% 
+  mutate(`Date of recording`=ifelse(`Date of recording`> as.Date('2016-01-01'), NA, `Date of recording`))
+```
+
+
+### DT Table
+```{r, warning=F}
+DT.oa <- DT2 %>% 
+  filter(PlotObservationID %in% unique(header.oa$PlotObservationID))
+
+## complement taxon group info from sPlot 3.0 - working version and
+# clean up DT from all non vascular plant records
+#load Backbonve sPlot 3.0
+load("/data/sPlot/releases/sPlot3.0/Backbone3.0.RData")
+
+## Assign genera to taxon group
+taxon.groups <- DT.oa %>% 
+  as.tbl() %>% 
+  distinct(species) %>% 
+  mutate(species2=species) %>% 
+  separate(species2, into=c("Genus"), sep=" ") %>% 
+  distinct(species, Genus) %>% 
+  left_join(Backbone %>% 
+              distinct(Name_short, `Taxon group`) %>% 
+              rename(species=Name_short, 
+                     Taxon.group=`Taxon group`) %>% 
+              separate(species, into=c("Genus"), sep=" ") %>% 
+              mutate(Taxon.group=as.character(Taxon.group)) %>% 
+              mutate(Taxon.group=ifelse(Taxon.group=="Unknown", NA, Taxon.group)) %>% 
+              distinct(Genus, .keep_all=T), 
+            by="Genus") %>% 
+  distinct(species, .keep_all = T) %>% 
+  dplyr::select(-Genus)
+  
+DT2.oa <- DT.oa %>% 
+  as.tbl() %>% 
+  mutate(Taxon.group=as.character(Taxon.group)) %>% 
+  mutate(Taxon.group=ifelse(Taxon.group=="Unknown", NA, Taxon.group)) %>% 
+  mutate(species2=species) %>% 
+  separate(species2, into=c("Genus"), sep=" ") %>% 
+  ## cross complement internally, based on Genus
+  left_join({.} %>% 
+              filter(!is.na(Taxon.group)) %>% 
+              #there may be conflict in attribution of specific genera to taxon group. Use majority vote
+              group_by(Genus, Taxon.group) %>% 
+              summarize(n=n()) %>% 
+              arrange(Genus, desc(n)) %>% 
+              slice(1) %>% 
+              dplyr::select(-n), 
+            by="Genus") %>% 
+  mutate(Taxon.group=coalesce(Taxon.group.x, Taxon.group.y)) %>% 
+  dplyr::select(-Taxon.group.x, -Taxon.group.y) %>% 
+  # attach taxon group info from Backbone 3.0
+  left_join(taxon.groups, by="species") %>% 
+  mutate(Taxon.group=coalesce(Taxon.group.x, Taxon.group.y)) %>% 
+  dplyr::select(-Taxon.group.x, -Taxon.group.y, -Genus)
+
+dim(DT2.oa)
+table(DT2.oa$Taxon.group, exclude = NULL)
+```
+
+```{r, echo=F}
+knitr::kable(DT2.oa %>% 
+               sample_n(20),
+             caption="Example of DT [20 random rows shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+
+
+### CWM data
+
+Load species level gap-filled trait data
+```{r}
+load("/data/sPlot2.0/TRY.all.mean.sd.3.by.genus.species.Rdata")
+TRY <- TRY.all.mean.sd.3.by.genus.species
+```
+
+Combine cover values across layers, where necessary
+```{r}
+# Ancillary function
+combine.cover <- function(x){
+    while (length(x)>1){
+      x[2] <- x[1]+(100-x[1])*x[2]/100
+      x <- x[-1]
+    }
+    return(x)
+}
+DT2.merged <- DT2.oa %>%
+  dplyr::select(PlotObservationID, species, Relative.cover) %>%
+  group_by(PlotObservationID, species) %>%
+  summarize(Relative.cover=combine.cover(Relative.cover)) %>%
+  ungroup()
+
+```
+
+Merge species data table with traits, and calculate species coverage for each plot, both based on relative cover, and number of species having trait info.
+```{r}
+CWM.oa0 <- DT2.merged %>%
+  as.tbl() %>%
+  dplyr::select(PlotObservationID, species, Relative.cover) %>%
+  left_join(TRY %>%
+              dplyr::rename(species=StandSpeciesName) %>%
+              dplyr::select(species, LeafArea.mean:Wood.vessel.length.mean), 
+            by="species") %>% 
+  rename_at(.vars=vars(ends_with(".mean")), 
+            .funs=~gsub(pattern=".mean", replacement="", x=.))
+
+# Calculate coverage for each trait in each plot
+CWM.oa2 <- CWM.oa0 %>%
+  mutate_at(.vars = vars(LeafArea), 
+            .funs = list(~if_else(is.na(.),0,1) * Relative.cover)) %>%
+  group_by(PlotObservationID) %>%
+  summarize(TraitCoverage_cover=sum(LeafArea, na.rm=T),
+            Species_richness=n(),
+            TraitCoverage_pa=mean(LeafArea>0))
+```
+
+Calculate CWM and CWV for each trait in each plot
+```{r, cache=T}
+# Ancillary function to calculate CWV
+variance2.fun <- function(trait, abu){
+  res <- as.double(NA)
+  #nam <- nam[!is.na(trait)]
+  abu <- abu[!is.na(trait)]
+  trait <- trait[!is.na(trait)]
+  abu <- abu/sum(abu)
+  if (length(trait)>1){
+    # you need more than 1 observation to calculate
+    # skewness and kurtosis
+    # for calculation see 
+    # http://r.789695.n4.nabble.com/Weighted-skewness-and-curtosis-td4709956.html
+    m.trait <- weighted.mean(trait,abu)
+    res <- sum(abu*(trait-m.trait)^2)
+  }
+  res
+}
+
+CWM.oa1 <- CWM.oa0 %>%
+  group_by(PlotObservationID) %>%
+  summarize_at(.vars= vars(LeafArea:Wood.vessel.length),
+               .funs = list(CWM=~weighted.mean(., Relative.cover, na.rm=T), 
+                            CWV=~variance2.fun(., Relative.cover)))
+
+```
+Assemble output
+```{r}  
+CWM.oa <- header.oa %>% 
+  dplyr::select(PlotObservationID) %>% 
+  left_join(CWM.oa2, by="PlotObservationID") %>% 
+  left_join(CWM.oa1, by="PlotObservationID")
+
+dim(CWM.oa)
+```
+
+
+
+## Figures and Tables
+### Geographic distribution of plots
+
+Template of Global map
+```{r, cache=T, results="hide", warning=F, message=F}
+#download data from rnaturalearth package
+countries <- ne_countries(returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+graticules <- ne_download(type = "graticules_15", category = "physical",
+                          returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+bb <- ne_download(type = "wgs84_bounding_box", category = "physical",
+                  returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+
+# create ggplot template of the world map
+w3a <- ggplot() +
+  geom_sf(data = bb, col = "grey20", fill = "white") +
+  geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
+  geom_sf(data = countries, fill = "grey90", col = NA, lwd = 0.3) +
+  coord_sf(crs = "+proj=eck4") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), 
+        legend.title=element_text(size=12), 
+        legend.text=element_text(size=12),
+        legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+        legend.key.height = unit(1.1, "cm"), 
+        legend.key.width = unit(1.1, "cm")) +
+  scale_fill_viridis()
+```
+
+Data Preparation for spatial plotting
+```{r, cache=T, results="hide", warning=F, message=F}
+header.sf <- SpatialPointsDataFrame(coords= header.oa %>% 
+                                      select(POINT_X, POINT_Y), 
+                                    proj4string = CRS("+init=epsg:4326"), 
+                                    data=data.frame(PlotObservationID=header.oa$PlotObservationID, 
+                                                    Dataset=header.oa$Dataset)) %>% 
+  st_as_sf() %>% 
+  st_transform(crs = "+proj=eck4")
+```
+
+Map of plot distribution - Version 1 - Coloured point.  
+Each colour represents a database. Please note there are not enough colours in the palette to represent all 103 datasets
+```{r, fig.width=8, fig.height=6, fig.align="center", warning=F, message=F}
+w3a + 
+  geom_sf(data=header.sf, aes(color=Dataset), pch="+", size=1, alpha=0.8) + # aes(col=Dataset),
+  geom_sf(data = countries, col = "grey10", fill=NA, lwd = 0.3) + 
+  theme(legend.position = "none")
+```
+
+Version 2  - hexagons
+```{r, fig.width=8, fig.height=6, fig.align="center", message=F}
+header2 <- header.oa %>% 
+  select(PlotObservationID, POINT_Y, POINT_X) %>% 
+  filter(!(abs(POINT_X) >171 & abs(POINT_Y>70)))
+dggs <- dgconstruct(spacing=300, metric=T, resround='down')
+
+#Get the corresponding grid cells for each plot
+header2$cell <- dgGEO_to_SEQNUM(dggs, header2$POINT_X, header2$POINT_Y)$seqnum
+
+#Calculate number of plots for each cell
+header.dggs   <- header2 %>% 
+  group_by(cell) %>% 
+  summarise(value.out=log(n(), 10))
+
+#Get the grid cell boundaries for cells 
+grid   <- dgcellstogrid(dggs, header.dggs$cell, frame=F) %>%
+  st_as_sf() %>% 
+  mutate(cell = header.dggs$cell) %>% 
+  mutate(value.out=header.dggs$value.out) %>% 
+  st_transform("+proj=eck4") %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES"))
+
+## plotting
+w3a + 
+    geom_sf(data=grid, aes(fill=value.out),lwd=0, alpha=0.9)    +
+    geom_sf(data = countries, col = "grey10", fill=NA, lwd = 0.3) + 
+    scale_fill_viridis(
+      name="# plots", breaks=0:5, labels = c("1", "10", "100",
+                                             "1,000", "10,000", "100,000"), option="viridis" )
+
+```
+
+### Whittaker Biome Graph
+Get climatic data
+```{r}
+load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
+climate.oa <- climate %>% 
+  filter(PlotID %in% header.oa$PlotObservationID)
+```
+
+```{r, fig.width=8, fig.height=5, fig.align="center", message=F}
+whittaker_base_plot() +
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10), 
+             alpha=1/3, 
+             cex=1/15)
+```
+
+
+### Summary tables
+Table 1 - Database level information
+
+```{r}
+table1 <- databases %>% 
+  filter(`Still in sPlot`==T, 
+         Via!="Aggregator") %>% 
+  dplyr::select(-Via, -`Still in sPlot`, -label) %>% 
+  distinct() %>% 
+  left_join(header.oa %>% 
+              group_by(`GIVD ID`) %>% 
+              summarize(contributed_plots=n()), 
+            by="GIVD ID") %>% 
+  dplyr::select(`GIVD ID`,`DB_name GIVD`, Custodian, `Deputy custodian`, n_Plots, contributed_plots, Citation) %>% 
+  filter(!is.na(contributed_plots))
+
+write_csv(table1, "_output/Table1_Databases")
+```
+
+```{r, echo=F}
+knitr::kable(table1%>% 
+               slice(1:20),
+             caption="Table 1 - Database level information [only first 20 rows shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+
+
+Table 2 - Metadata and environmental data included in header  
+
+Create table 2 
+```{r}
+table2 <- header.oa %>% 
+summarize_at(.vars=vars(!starts_with("PlotObservationID")),
+            .funs = list(xxxNo.records=~sum(!is.na(.)),
+               xxxType.of.variable=~class(.), 
+               xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
+                                  paste(range(., na.rm=T), collapse=" - "),
+                                  ifelse(is.factor(.), 
+                                         paste(levels(.), collapse=", "),
+                                         ifelse(is.logical(.),
+                                                paste(names(table(.)), "=", 
+                                                      table(.), collapse="; "),
+                                                NA)))))) %>% 
+  gather(key="Variable") %>% 
+  separate(Variable, into = c("Variable", "feature"), sep="_xxx") %>% 
+  spread(key=feature, value = value) %>% 
+  rename(`Range/Levels`=Levels) %>% 
+  mutate(Variable=factor(Variable, levels=colnames(header.oa))) %>% 
+  arrange(Variable) 
+
+write_csv(table2, "_output/Table2_header.csv")
+```
+
+```{r, echo=F}
+knitr::kable(table2,
+             caption="Table 2 - Variables in header") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+## Save Ouput
+```{r}
+save(DT2.oa, header.oa, CWM.oa, file = "_output/sPlot_OPEN.RData")
+```
+### Sink tables for Manubot
+```{r}
+out.file <- "_output/91.ManubotTables.md"
+readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
+readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='11'}\n", file = out.file, append=T)
+readr::write_lines("\n \n", file = out.file, append=T)
+readr::write_lines(kable(table1, format = "markdown"), file = out.file, append=T)
+readr::write_lines("\n \n \n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='12'}\n", file = out.file, append=T)
+readr::write_lines(kable(table2, format = "markdown"), file = out.file, append=T)
+```
+### Create list of coauthors
+```{r echo = F, results = 'hide', message=F}
+library(stringr)
+allaffiliations <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Affiliations.csv")
+allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
+allauthors <- unique(c(table1$Custodian, table1$`Deputy custodian`))
+
+affiliations <- allaffiliations %>% 
+  filter(Name %in% allauthors) %>% 
+  left_join(allroles %>% 
+              dplyr::select(Name,Surname), 
+            by="Name") %>% 
+  filter(!Surname %in% c("Bruelheide", "Sabatini", "Lenoir")) %>% 
+  arrange(Surname) %>% 
+  dplyr:::select(name=Name, email=`E-Mail`, orcid=ORCID, everything(), -Surname, -`Second E-Mail`) %>% 
+    replace_na(list(`Department/Institute/Faculty`="", Street="", `Postal code`="", Town="",   Country="" )) %>% 
+  unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
+  mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", "))
+
+
+## function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
+create.yaml <- function(x, file.output){
+  tmp <- affiliations %>%
+    mutate(github="") %>% 
+    filter(name==x) %>% 
+    pivot_longer(!Sequence_affiliations, names_to = "tag") %>%
+    arrange(Sequence_affiliations) %>% 
+    dplyr::select(-Sequence_affiliations) %>% 
+    mutate(tag=factor(tag, levels=c("github", "name", "orcid", "email", "affiliations"))) %>% 
+    distinct() %>% 
+    bind_rows(data.frame(tag="affiliations", 
+                         value=paste0("\n      - ", 
+                                      paste({.} %>% 
+                                              filter(tag=="affiliations") %>% 
+                                              pull(value),
+                                            collapse="\n      - ")))) %>% 
+    group_by(tag) %>% 
+    slice(n()) %>% 
+    ungroup() %>% 
+    mutate(tag=as.character(tag)) %>% 
+    mutate(tag=ifelse(tag=="github", "  - github", paste0("    ", tag))) %>% 
+    filter(!is.na(value)) %>%
+    unite(tag:value,
+          sep = ": ",
+          col = "newtag",
+          remove = T) %>% 
+    mutate(newtag=str_remove(newtag, pattern = '"')) %>% 
+    mutate(newtag=str_remove(newtag, pattern = '"')) %>% 
+    mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", ")) %>% 
+    mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", "))
+    write_lines(tmp[[1]], file = file.output, append=T) 
+}
+#create empty affiliation file
+affi.out <- "_output/affiliations_yaml.txt"
+write_lines("", file = affi.out)
+lapply(affiliations %>% 
+         dplyr::select(name) %>% 
+         distinct() %>% 
+         pull(name), create.yaml, affi.out)
+  
+```
+
+
+## SessionInfo
+```{r}
+sessionInfo()
+```
+
