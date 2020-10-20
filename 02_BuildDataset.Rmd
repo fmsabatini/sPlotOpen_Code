@@ -232,26 +232,7 @@ After merging first choice plots and the corresponding reserves, the database co
 Data preparation: adjust header data, select relevant variables, reformat variables into the right classes, correct macroscopic errors.
 ```{r, warning=F}
 header.oa <- header.oa %>% 
-  dplyr::select(
-    #metadata + location
-    PlotObservationID, `GIVD ID`, Dataset, CONTINENT, Country, 
-    "Biome", `Date of recording`, Latitude, Longitude, "Location uncertainty (m)", POINT_X, POINT_Y,
-    #sampling design
-    "Relevé area (m²)", "Herbs identified (y/n)", "Mosses identified (y/n)", 
-    "Lichens identified (y/n)", "Plants recorded",  
-    #topography
-    "Altitude (m)", "Aspect (°)", "Slope (°)",
-    #vegetation type
-    "is.forest", "is.non.forest", "ESY", "Naturalness", "Forest", 
-    "Shrubland", "Grassland", "Sparse.vegetation", "Wetland",
-    #vegetation structure
-    "Cover total (%)", "Cover tree layer (%)", "Cover shrub layer (%)", 
-    "Cover herb layer (%)", "Cover moss layer (%)", "Cover lichen layer (%)", 
-    "Cover algae layer (%)", "Cover litter layer (%)", "Cover bare rock (%)", 
-    "Cover cryptogams (%)", "Cover bare soil (%)", "Height (highest) trees (m)", 
-    "Height lowest trees (m)", "Height (highest) shrubs (m)", "Height lowest shrubs (m)", 
-    "Aver. height (high) herbs (cm)", "Aver. height lowest herbs (cm)", "Maximum height herbs (cm)")  %>% 
-  #reformat and rename
+    #reformat and rename
   mutate_at(.vars=vars(`Altitude (m)`, `Aspect (°)`, `Slope (°)`), 
             ~as.numeric(.)) %>% 
   mutate_at(.vars=vars(ESY), 
@@ -261,8 +242,7 @@ header.oa <- header.oa %>%
   mutate_at(.vars=vars(`Herbs identified (y/n)`, `Mosses identified (y/n)`, `Lichens identified (y/n)`),
             ~ifelse(.=="Y", T, F)) %>% 
   mutate(`Date of recording`=as.Date(`Date of recording`, "%d-%m-%Y") ) %>%
-  rename(Continent=CONTINENT) %>% 
-  mutate(Continent=factor(Continent, exclude = " ")) %>% 
+  mutate(CONTINENT=factor(CONTINENT, exclude = " ")) %>% 
   mutate(`Plants recorded`=factor(`Plants recorded`, exclude = "#N/A")) %>% 
   mutate(`Plants recorded`=forcats::fct_recode(`Plants recorded`, 
                                       "All vascular plants"="Complete vegetation",
@@ -284,20 +264,71 @@ header.oa <- header.oa %>%
   mutate(`Altitude (m)`=ifelse(`Altitude (m)`< -100, NA, `Altitude (m)`)) %>% 
   #plots from Veg_bank seem to have a mix of feet and meter in Altitude
   mutate(`Altitude (m)`=ifelse(`GIVD ID`=="NA-US-002", NA, `Altitude (m)`)) %>%  
+  mutate(`Slope (°)`=ifelse(`Slope (°)`<0, NA, `Slope (°)`)) %>%  
   mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
             ~ifelse(.>=10|.<0, NA, .)) %>% 
   mutate(`Relevé area (m²)`=ifelse(`Relevé area (m²)`<0, NA, `Relevé area (m²)`)) %>% 
-  mutate(`Date of recording`=ifelse(`Date of recording`> as.Date('2016-01-01'), NA, `Date of recording`))
+  mutate(`Date of recording`=ifelse(`Date of recording`> as.Date('2016-01-01'), NA, `Date of recording`)) %>% 
+  # Rename fields
+  dplyr::select(
+    #metadata + location
+    PlotObservationID,
+    GIVD_ID = "GIVD ID",
+    Dataset,
+    Continent = CONTINENT,
+    Country,
+    Biome,
+    Date = "Date of recording",
+    Latitude,
+    Longitude,
+    Location_uncertainty = "Location uncertainty (m)", #POINT_X, POINT_Y,
+    #sampling design
+    Releve_area = "Relevé area (m²)", 
+    Herbs_identified = "Herbs identified (y/n)", #Mosses_identified="Mosses identified (y/n)", "Lichens identified (y/n)", 
+    Plant_recorded = "Plants recorded",
+    #topography
+    Altitude = "Altitude (m)", 
+    Aspect = "Aspect (°)", 
+    Slope = "Slope (°)",
+    #vegetation type
+    is_forest = "is.forest",
+    is_nonforest = "is.non.forest", 
+    ESY, 
+    Naturalness, 
+    Forest,
+    Shrubland, 
+    Grassland, 
+    Sparse_vegetation = "Sparse.vegetation", 
+    Wetland,
+    #vegetation structure
+    Cover_total = "Cover total (%)", 
+    Cover_tree_layer = "Cover tree layer (%)",
+    Cover_shrub_layer = "Cover shrub layer (%)",
+    Cover_herb_layer = "Cover herb layer (%)", 
+    Cover_moss_layer = "Cover moss layer (%)", 
+    Cover_lichen_layer ="Cover lichen layer (%)",
+    Cover_algae_layer = "Cover algae layer (%)", 
+    Cover_litter_layer = "Cover litter layer (%)", 
+    Cover_bare_rocks = "Cover bare rock (%)",
+    Cover_cryptogams = "Cover cryptogams (%)", 
+    Cover_bare_soil = "Cover bare soil (%)", 
+    Height_trees_highest = "Height (highest) trees (m)",
+    Height_trees_lowest = "Height lowest trees (m)", 
+    Height_shrubs_highest = "Height (highest) shrubs (m)", 
+    Height_shrubs_lowest = "Height lowest shrubs (m)",
+    Height_herbs_average = "Aver. height (high) herbs (cm)", 
+    Height_herbs_lowest = "Aver. height lowest herbs (cm)", 
+    Height_herbs_highest = "Maximum height herbs (cm)")
 ```
 
 
 ### DT Table
+
+Complement taxon group using info from sPlot 3.0 and cross-matching congeneric species
 ```{r, warning=F}
 DT.oa <- DT2 %>% 
   filter(PlotObservationID %in% unique(header.oa$PlotObservationID))
 
-## complement taxon group info from sPlot 3.0 - working version and
-# clean up DT from all non vascular plant records
 #load Backbonve sPlot 3.0
 load("/data/sPlot/releases/sPlot3.0/Backbone3.0.RData")
 
@@ -347,10 +378,163 @@ dim(DT2.oa)
 table(DT2.oa$Taxon.group, exclude = NULL)
 ```
 
+Clean up `DT2.oa` from all non vascular plant records and recalculate relative covers.
+
+```{r}
+DT2.oa <- DT2.oa %>% 
+  filter(Taxon.group != c("Alga", "Lichen", "Moss")) %>% 
+  left_join({.} %>%
+              group_by(PlotObservationID) %>% 
+              summarize(tot.cover=sum(Relative.cover)), 
+            by=c("PlotObservationID")) %>% 
+  mutate(Relative.cover=Relative.cover/tot.cover) %>% 
+  dplyr::select(-tot.cover)
+```
+The field `Layer` is always zero. Delete.
+```{r}
+DT2.oa <- DT2.oa %>% 
+  dplyr::select(-Layer)
+```
+
+#### Abundance and cover data
+
+Species abundance information varies across datasets and plots. While for the large majority of plots abundance values are returned as percentage cover, there is a subset where abundance is returned with different scales. These are marked in the column `Cover code` as follows:
+\newline \newline
+*x_BA* - Basal Area  
+*x_IC* - Individual count  
+*x_SC* - Stem count  
+*x_IV* - Relative Importance  
+*x_PF* - Presence Frequency  
+*x* - Presence absence  
+\newline \newline
+Still, it's not really intuitive that in case `Cover code` belongs to one of the classes above, then the actual abundance value is stored in the `x_` column. This stems from the way this data is stored in `TURBOVEG`.  
+To make the cover data more user friendly, I simplify the way cover is stored, so that there are only two columns:  
+`Ab_scale` - to report the type of scale used  
+`Abundance` - to coalesce the cover\\abundance values previously in the columns `Cover %` and `x_`.  
+\\newline
+
+This information is stored in a working copy of the DT table, before standardization to relative cover. Import it and filter only plots in open-access selection.
+
+```{r}
+DTraw <- read_delim(
+  "/data/sPlot2.0/sPlot_2015_07_29_species.csv",
+  delim = "\t",
+  col_types = cols(
+    PlotObservationID = col_double(),
+    Taxonomy = col_character(),
+    `Taxon group` = col_character(),
+    `Taxon group ID` = col_double(),
+    `Turboveg2 concept` = col_character(),
+    `Matched concept` = col_character(),
+    Match = col_double(),
+    `Original taxon concept` = col_character(),
+    Layer = col_double(),
+    `Cover %` = col_double(),
+    `Cover code` = col_character(),
+    x_ = col_character()
+  )) %>% 
+  filter(PlotObservationID %in% header.oa$PlotObservationID)
+```
+
+Create `Ab_scale` field
+```{r}
+DTraw <- DTraw %>% 
+  mutate(Ab_scale = ifelse(`Cover code` %in% 
+                             c("x_BA", "x_IC", "x_SC", "x_IV", "x_PF", "x") & !is.na(x_), 
+                           `Cover code`, 
+                           "CoverPerc"))  
+#mark pa plots
+DTraw <- DTraw %>% 
+  mutate(Ab_scale=replace(Ab_scale,
+                    list=`Cover code`=="x" & `Cover %`==0,
+                    values="pa"))
+```
+
+Fix some errors. There are some plots where all species have zeros in the field `Cover %`. Some of them are marked as p\\a (`Cover code=="x"`), but other not. Consider all this plots as presence\\absence. Most of them come from `USA_CVS` and `USA_VegBank`. 
+```{r}
+allzeroes <- DTraw %>% 
+  filter(Ab_scale=="CoverPerc") %>% 
+  group_by(PlotObservationID) %>% 
+  summarize(allzero=all(`Cover %`==0) ) %>% 
+  filter(allzero==T) %>% 
+  pull(PlotObservationID)
+DTraw <- DTraw %>%
+  mutate(`Cover code` = replace(`Cover code`,
+    list = (PlotObservationID %in% allzeroes),
+    values = "x")) %>%
+  mutate(`Ab_scale` = replace(`Ab_scale`,
+    list = (PlotObservationID %in% allzeroes),
+    values = "pa"))
+```
+For p\\a plots, replace the field `Cover %` with NA, and assign 1 to the field `x_`. 
+```{r}
+DTraw <- DTraw %>% 
+ mutate(x_=replace(x_,
+                    list=Ab_scale=="pa",
+                    values=1)) %>% 
+  mutate(`Cover %`=replace(`Cover %`,
+                    list=Ab_scale=="pa",
+                    values=NA))
+```
+
+There are also some plots having different cover scales. They are not many, and are mostly in Brazil.  
+Find these plots first:
+```{r}
+mixed <- DTraw %>% 
+  distinct(PlotObservationID, Ab_scale) %>% 
+  group_by(PlotObservationID) %>% 
+  summarize(n=n()) %>% 
+  filter(n>1) %>% 
+  pull(PlotObservationID) %>% 
+  unique()
+length(mixed)
+```
+Most of these plots are a mixture of trees, being measured based on Basal area, and herbs, for which only p\\a was recorded. Transform the `Cover %` of p\\a species to an arbitrary small number, i.e., 1.  
+Note that the field `Abundance` is created only here.
+```{r}
+DTraw <- DTraw %>% 
+  mutate(Ab_scale=replace(Ab_scale, 
+                           list=(PlotObservationID %in% mixed & 
+                                   Ab_scale=="CoverPerc"), 
+                           values="pa")) %>%
+  mutate(`Cover %`=replace(`Cover %`, 
+                           list=PlotObservationID %in% mixed,
+                           values=NA)) %>% 
+  mutate(x_=replace(x_,  list=Ab_scale=="pa", values=1)) %>% 
+  #Create additional field Abundance to avoid overwriting original data
+  mutate(Abundance =ifelse(Ab_scale %in% c("x_BA", "x_IC", "x_SC", "x_IV", "x_RF", "pa"), 
+                          x_, `Cover %`)) %>% 
+  mutate(Abundance=as.numeric(Abundance))
+```
+
+Double check and summarize `Ab_scales`
+```{r}
+scale_check <- DTraw %>% 
+  distinct(PlotObservationID, Layer, Ab_scale) %>% 
+  group_by(PlotObservationID) %>% 
+  summarise(Ab_scale_combined=ifelse(length(unique(Ab_scale))==1, 
+                                     unique(Ab_scale), 
+                                     "Multiple_scales"))
+
+nrow(scale_check)== length(unique(DTraw$PlotObservationID))
+table(scale_check$Ab_scale_combined, exclude=NULL)
+```
+Attach fields `Ab_scale` and `Abundance` to DT2.oa. Rename columns.
+
+```{r}
+DT2.oa <- DT2.oa %>% 
+  left_join(DTraw %>% 
+              dplyr::select(PlotObservationID, Matched.concept=`Matched concept`, Ab_scale, Abundance), 
+            by=c("PlotObservationID", "Matched.concept")) %>% 
+  dplyr::select(PlotObservationID, Species=species, Original_species=Matched.concept, 
+                Taxon_group=Taxon.group, Original_abundance=Abundance, Abundance_scale=Ab_scale, Relative_cover=Relative.cover)
+```
+
+
 ```{r, echo=F}
-knitr::kable(DT2.oa %>% 
-               sample_n(20),
-             caption="Example of DT [20 random rows shown]") %>%
+knitr::kable(DT2.oa %>%
+               filter(PlotObservationID %in% sample(header.oa$PlotObservationID, 3)),
+             caption="Example of DT2.oa [3 randomly selected plots shown]") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
@@ -364,40 +548,22 @@ load("/data/sPlot2.0/TRY.all.mean.sd.3.by.genus.species.Rdata")
 TRY <- TRY.all.mean.sd.3.by.genus.species
 ```
 
-Combine cover values across layers, where necessary
-```{r}
-# Ancillary function
-combine.cover <- function(x){
-    while (length(x)>1){
-      x[2] <- x[1]+(100-x[1])*x[2]/100
-      x <- x[-1]
-    }
-    return(x)
-}
-DT2.merged <- DT2.oa %>%
-  dplyr::select(PlotObservationID, species, Relative.cover) %>%
-  group_by(PlotObservationID, species) %>%
-  summarize(Relative.cover=combine.cover(Relative.cover)) %>%
-  ungroup()
-
-```
-
 Merge species data table with traits, and calculate species coverage for each plot, both based on relative cover, and number of species having trait info.
 ```{r}
-CWM.oa0 <- DT2.merged %>%
+CWM.oa0 <- DT2.oa %>%
   as.tbl() %>%
-  dplyr::select(PlotObservationID, species, Relative.cover) %>%
+  dplyr::select(PlotObservationID, Species, Relative_cover) %>%
   left_join(TRY %>%
-              dplyr::rename(species=StandSpeciesName) %>%
-              dplyr::select(species, LeafArea.mean:Wood.vessel.length.mean), 
-            by="species") %>% 
+              dplyr::rename(Species=StandSpeciesName) %>%
+              dplyr::select(Species, LeafArea.mean:Wood.vessel.length.mean), 
+            by="Species") %>% 
   rename_at(.vars=vars(ends_with(".mean")), 
             .funs=~gsub(pattern=".mean", replacement="", x=.))
 
 # Calculate coverage for each trait in each plot
 CWM.oa2 <- CWM.oa0 %>%
   mutate_at(.vars = vars(LeafArea), 
-            .funs = list(~if_else(is.na(.),0,1) * Relative.cover)) %>%
+            .funs = list(~if_else(is.na(.),0,1) * Relative_cover)) %>%
   group_by(PlotObservationID) %>%
   summarize(TraitCoverage_cover=sum(LeafArea, na.rm=T),
             Species_richness=n(),
@@ -427,8 +593,8 @@ variance2.fun <- function(trait, abu){
 CWM.oa1 <- CWM.oa0 %>%
   group_by(PlotObservationID) %>%
   summarize_at(.vars= vars(LeafArea:Wood.vessel.length),
-               .funs = list(CWM=~weighted.mean(., Relative.cover, na.rm=T), 
-                            CWV=~variance2.fun(., Relative.cover)))
+               .funs = list(CWM=~weighted.mean(., Relative_cover, na.rm=T), 
+                            CWV=~variance2.fun(., Relative_cover)))
 
 ```
 Assemble output
@@ -441,6 +607,12 @@ CWM.oa <- header.oa %>%
 dim(CWM.oa)
 ```
 
+Rename fields to follow convention
+```{r}
+CWM.oa <- CWM.oa %>% 
+  rename_all(.funs=~gsub('\\.', '_', x = .)) %>% 
+  colnames()
+```
 
 
 ## Figures and Tables
@@ -480,7 +652,7 @@ w3a <- ggplot() +
 Data Preparation for spatial plotting
 ```{r, cache=T, results="hide", warning=F, message=F}
 header.sf <- SpatialPointsDataFrame(coords= header.oa %>% 
-                                      select(POINT_X, POINT_Y), 
+                                      select(Longitude, Latitude), 
                                     proj4string = CRS("+init=epsg:4326"), 
                                     data=data.frame(PlotObservationID=header.oa$PlotObservationID, 
                                                     Dataset=header.oa$Dataset)) %>% 
@@ -500,12 +672,12 @@ w3a +
 Version 2  - hexagons
 ```{r, fig.width=8, fig.height=6, fig.align="center", message=F}
 header2 <- header.oa %>% 
-  select(PlotObservationID, POINT_Y, POINT_X) %>% 
-  filter(!(abs(POINT_X) >171 & abs(POINT_Y>70)))
+  select(PlotObservationID, Latitude, Longitude) %>% 
+  filter(!(abs(Longitude) >171 & abs(Latitude>70)))
 dggs <- dgconstruct(spacing=300, metric=T, resround='down')
 
 #Get the corresponding grid cells for each plot
-header2$cell <- dgGEO_to_SEQNUM(dggs, header2$POINT_X, header2$POINT_Y)$seqnum
+header2$cell <- dgGEO_to_SEQNUM(dggs, header2$Longitude, header2$Latitude)$seqnum
 
 #Calculate number of plots for each cell
 header.dggs   <- header2 %>% 
@@ -535,7 +707,9 @@ Get climatic data
 ```{r}
 load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
 climate.oa <- climate %>% 
-  filter(PlotID %in% header.oa$PlotObservationID)
+  filter(PlotID %in% header.oa$PlotObservationID) %>% 
+  dplyr::select(-POINT_X, -POINT_Y) %>% 
+  rename(PlotObservationID=PlotID)
 ```
 
 ```{r, fig.width=8, fig.height=5, fig.align="center", message=F}
@@ -559,13 +733,13 @@ table1 <- databases %>%
   dplyr::select(-Via, -`Still in sPlot`, -label) %>% 
   distinct() %>% 
   left_join(header.oa %>% 
-              group_by(`GIVD ID`) %>% 
+              group_by(GIVD_ID) %>% 
               summarize(contributed_plots=n()), 
-            by="GIVD ID") %>% 
+            by=c("GIVD ID"="GIVD_ID")) %>% 
   dplyr::select(`GIVD ID`,`DB_name GIVD`, Custodian, `Deputy custodian`, n_Plots, contributed_plots, Citation) %>% 
   filter(!is.na(contributed_plots))
 
-write_csv(table1, "_output/Table1_Databases")
+write_csv(table1, "_output/Table1_Databases.csv")
 ```
 
 ```{r, echo=F}
@@ -627,17 +801,35 @@ readr::write_lines(kable(table2, format = "markdown"), file = out.file, append=T
 ### Create list of coauthors
 ```{r echo = F, results = 'hide', message=F}
 library(stringr)
-allaffiliations <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Affiliations.csv")
 allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
-allauthors <- unique(c(table1$Custodian, table1$`Deputy custodian`))
-
-affiliations <- allaffiliations %>% 
-  filter(Name %in% allauthors) %>% 
+allaffiliations <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Affiliations.csv") %>% 
   left_join(allroles %>% 
-              dplyr::select(Name,Surname), 
-            by="Name") %>% 
-  filter(!Surname %in% c("Bruelheide", "Sabatini", "Lenoir")) %>% 
-  arrange(Surname) %>% 
+                dplyr::select(Name,Surname), 
+              by="Name")
+
+first <- allaffiliations %>% 
+  filter(Name %in% c("Francesco Maria Sabatini", "Jonathan Lenoir")) %>% 
+  arrange(Name)
+##third author still to code Tarek Habab
+custodians <- unique(table1$Custodian)
+core <- allaffiliations %>% 
+  filter(Name %in% (allroles %>%
+           filter(`Core team` == T) %>%
+           filter(!Surname %in% c("Bruelheide", "Sabatini", "Lenoir")) %>%
+           pull(Name))) %>% 
+  arrange(Surname) 
+last <- allaffiliations %>% 
+  filter(Name=="Helge Bruelheide")
+
+affiliations <- first %>% 
+  bind_rows(core) %>% 
+  bind_rows(allaffiliations %>% 
+    filter(Name %in% custodians) %>% 
+    filter(!Name %in% core$Name) %>% 
+    filter(!Name %in% first$Name) %>% 
+    filter(!Name %in% last$Name) %>% 
+    arrange(Surname)) %>%  
+  bind_rows(last) %>% 
   dplyr:::select(name=Name, email=`E-Mail`, orcid=ORCID, everything(), -Surname, -`Second E-Mail`) %>% 
     replace_na(list(`Department/Institute/Faculty`="", Street="", `Postal code`="", Town="",   Country="" )) %>% 
   unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
