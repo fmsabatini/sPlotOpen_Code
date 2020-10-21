@@ -91,17 +91,17 @@ summary.sel.final <- usable.plots123 %>%
   summarize(N.redundant=n(), 
             usable=sum(Usable=="Yes"), 
             not.usable=sum(Usable=="No"), 
-            unknown=sum(Usable=="Unknown")) %>% 
+            unknown=sum(Usable=="Unknown"), .groups = 'drop') %>% 
   ### total number of plots in a dataset
   left_join(header %>% 
               group_by(`GIVD ID`) %>% 
-              summarize(n.tot.plot=n()),
+              summarize(n.tot.plot=n(), .groups = 'drop'),
             by="GIVD ID") %>% 
   ### number of first choice plots
   left_join(header %>% 
               filter(PlotObservationID %in% sel1) %>% 
               group_by(`GIVD ID`) %>% 
-              summarize(n.sel.plot=n()),
+              summarize(n.sel.plot=n(), .groups = 'drop'),
             by="GIVD ID") %>% 
   mutate(share.perc=round(n.sel.plot/n.tot.plot*100),1) %>% 
   dplyr::select(`GIVD ID`:`Deputy custodian`, n.tot.plot:share.perc, N.redundant:unknown) 
@@ -110,7 +110,7 @@ summary.sel.final <- usable.plots123 %>%
 firstchoice <- usable.plots123 %>% 
   mutate(Usable=forcats::fct_recode(Usable, "No" = "Unknown")) %>% 
   group_by(first.choice, Usable) %>% 
-  summarize(n=n())
+  summarize(n=n(), .groups = 'drop')
 ```
 
 ```{r, echo=F}
@@ -144,7 +144,7 @@ pca.grids <- plot_data %>%
             by="Dataset") %>% 
   dplyr::select(PlotObservationID,`GIVD ID`, Dataset, 
                 cellID, pc1_val, pc2_val) %>% 
-  as.tbl() %>% 
+  as_tibble() %>% 
   #Attach info on first choice, reserve and usable plots
   mutate(first.choice=PlotObservationID %in% sel1) %>% 
   left_join(usable.plots123 %>% 
@@ -190,7 +190,7 @@ selected.reserves <- pca.grids %>%
               group_by(cellID) %>% 
               summarize(n.first=sum(first.choice, na.rm=T),
                         n.first.usable=sum(first.choice*Usable, na.rm=T), 
-                        reserve.available=sum(reserve, na.rm=T)) %>% 
+                        reserve.available=sum(reserve, na.rm=T), .groups = 'drop') %>% 
               mutate(reserve.needed=n.first-n.first.usable),
             by=c("cellID")) %>% 
   filter(reserve.needed>0) %>% 
@@ -362,7 +362,7 @@ DT2.oa <- DT.oa %>%
               filter(!is.na(Taxon.group)) %>% 
               #there may be conflict in attribution of specific genera to taxon group. Use majority vote
               group_by(Genus, Taxon.group) %>% 
-              summarize(n=n()) %>% 
+              summarize(n=n(), .groups = 'drop') %>% 
               arrange(Genus, desc(n)) %>% 
               slice(1) %>% 
               dplyr::select(-n), 
@@ -385,7 +385,7 @@ DT2.oa <- DT2.oa %>%
   filter(Taxon.group != c("Alga", "Lichen", "Moss")) %>% 
   left_join({.} %>%
               group_by(PlotObservationID) %>% 
-              summarize(tot.cover=sum(Relative.cover)), 
+              summarize(tot.cover=sum(Relative.cover), .groups = 'drop'), 
             by=c("PlotObservationID")) %>% 
   mutate(Relative.cover=Relative.cover/tot.cover) %>% 
   dplyr::select(-tot.cover)
@@ -455,7 +455,7 @@ Fix some errors. There are some plots where all species have zeros in the field 
 allzeroes <- DTraw %>% 
   filter(Ab_scale=="CoverPerc") %>% 
   group_by(PlotObservationID) %>% 
-  summarize(allzero=all(`Cover %`==0) ) %>% 
+  summarize(allzero=all(`Cover %`==0), .groups = 'drop' ) %>% 
   filter(allzero==T) %>% 
   pull(PlotObservationID)
 DTraw <- DTraw %>%
@@ -483,7 +483,7 @@ Find these plots first:
 mixed <- DTraw %>% 
   distinct(PlotObservationID, Ab_scale) %>% 
   group_by(PlotObservationID) %>% 
-  summarize(n=n()) %>% 
+  summarize(n=n(), .groups = 'drop') %>% 
   filter(n>1) %>% 
   pull(PlotObservationID) %>% 
   unique()
@@ -514,7 +514,8 @@ scale_check <- DTraw %>%
   group_by(PlotObservationID) %>% 
   summarise(Ab_scale_combined=ifelse(length(unique(Ab_scale))==1, 
                                      unique(Ab_scale), 
-                                     "Multiple_scales"))
+                                     "Multiple_scales"), 
+            .groups = 'drop')
 
 nrow(scale_check)== length(unique(DTraw$PlotObservationID))
 table(scale_check$Ab_scale_combined, exclude=NULL)
@@ -538,6 +539,158 @@ knitr::kable(DT2.oa %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
+#### Update individual datasets
+There are two datasets whose species names need to be updated before releasing OA.
+
+
+#### AF-CD-001 - Congo
+Import updated data and convert to long format
+```{r, message=F}
+congo.new.raw <- read_csv("_data/Update_Congo/Kearsley_Yangambi_sPlot_subplots_v2.csv")
+
+congo.new <- congo.new.raw %>% 
+  mutate(BA=pi* ((`DBH (cm)`/100/2)^2)) %>% 
+  group_by(Site, Species) %>% 
+  summarize(BA=sum(BA), .groups="drop") %>% 
+  bind_rows({.} %>% 
+              separate(Site, into=c("Site", "Subplot", sep=" - ")) %>% 
+              group_by(Site, Species) %>% 
+              summarize(BA=sum(BA))) %>% 
+  distinct() %>% 
+  mutate(Site2=Site) %>% 
+  separate(Site2, into=c("Plot", "Subplot")) %>% 
+  mutate(Area=ifelse(!is.na(Subplot), 625, 10000)) %>% 
+  mutate(BA.ha=BA/Area*10000) %>% 
+  arrange(Site, Species) %>% 
+  dplyr::select(Site, Plot, Subplot, Species, BA, BA.ha)
+head(congo.new)
+```
+Assign PlotObservationID to plot codes
+```{r}
+### Data from Stephan 
+header.TV <- read_delim(file = "_data/sPlot-2.1_header.csv", delim = "\t", 
+                        col_types = cols(PlotObservationID = col_double(),
+                                        PlotID = col_double(),
+                                        `TV2 relevé number` = col_double(),
+                                        `Original nr in database` = col_character(),
+                                        ORIGDB_NR = col_character(),
+                                        ORIGDB_NR_1 = col_character(),
+                                        ORIG_REL_N = col_character(),
+                                        Longitude = col_double(),
+                                        Latitude = col_double(),
+                                        `Location uncertainty (m)` = col_double(),
+                                        Dataset = col_character()))
+
+header.sel.TV <- header.oa %>%
+  dplyr::select(PlotObservationID, GIVD_ID) %>% 
+  left_join(header.TV %>% 
+              dplyr::select(PlotObservationID, `Original nr in database`),
+            by="PlotObservationID")
+
+congo.new <- congo.new %>% 
+  inner_join(header.sel.TV, by=c("Site"="Original nr in database")) %>% 
+  relocate(PlotObservationID, .before=Site)
+```
+
+Correct species names based on sPlot v2.1 Backbone
+```{r}
+## load backbone
+load("/data/sPlot/releases/sPlot2.1/backbone.splot2.1.try3.is.vascular.Rdata")
+
+## join names from backbone to congo.new
+congo.new <- congo.new %>% 
+  mutate(Species=str_replace(Species, pattern=" sp.$", replacement="")) %>% 
+  left_join(backbone.splot2.1.try3 %>% 
+              dplyr::select(Species=Name_submitted, New_species=name.short.correct) %>% 
+              distinct(), 
+            by="Species") %>% 
+  ##manually correct two mistakes in Backbone
+  mutate(New_species=ifelse(New_species %in% c("Canarium schweinfurtii", "Prioria balsaminfera"),
+                            Species, 
+                            New_species)) %>% 
+  ## delete unidentified species 
+  filter(Species != "unknown")
+
+## check species names to change, based on the backbone
+congo.new %>% 
+  filter(Species != New_species) %>% 
+  distinct(Species, .keep_all=T)
+
+### get all unmatched species and run through TPL
+# tocheck <- congo.new %>% 
+#  filter(is.na(New_species)) %>% 
+#  pull(Species) %>% 
+#  unique()
+#
+# library(Taxonstand)
+# checked <- TPL(tocheck)
+# checked2 <- data.frame(old_species=tocheck) %>% 
+#   bind_cols(checked %>% 
+#               dplyr::select(New.Genus, New.Species)) %>% 
+#   replace_na(list(New.Genus="", New.Species="")) %>% 
+#   unite(New.Genus, New.Species, col=new_species, sep=" ") %>% 
+#   mutate(new_species=str_replace(new_species, pattern=" *$", replacement=""))
+# ## all unmatched names are valid names, based on TPL2
+# print(checked2, n=12)
+
+## assign unmatched old names to new names
+congo.new <- congo.new %>% 
+  mutate(New_species=ifelse(is.na(New_species), 
+                            Species, New_species))
+```
+
+Format `congo.new` to match `DT2.oa`
+```{r}
+congo.out <- congo.new %>%
+  rename(Original_abundance = BA.ha, 
+         Original_species=Species) %>% 
+  rename(Species=New_species) %>%
+  mutate(Taxon_group = "Vascular plant") %>%
+  mutate(Abundance_scale = "x_BA") %>%
+  left_join({.} %>%
+    group_by(PlotObservationID) %>%
+    summarize(Tot_abundance = sum(Original_abundance),
+      .groups = "drop"),
+    by = "PlotObservationID") %>%
+  mutate(Relative_cover = Original_abundance / Tot_abundance) %>% 
+  dplyr::select(all_of(colnames(DT2.oa)))
+
+## compare a random plot before and after replacement
+plotsel <- sample(unique(congo.new$PlotObservationID), 1)
+DT2.oa %>% filter(PlotObservationID==plotsel) %>% print(n=15)
+congo.out %>% filter(PlotObservationID==plotsel) %>% print(n=15)
+```
+Replace entries in `DT2.oa`
+```{r}
+dim(DT2.oa)
+DT2.oa <- DT2.oa %>% 
+  filter(!PlotObservationID %in% (congo.out %>% 
+                                   pull(PlotObservationID) %>% 
+                                   unique())) %>% 
+  bind_rows(congo.out) %>% 
+  arrange(PlotObservationID, Species)
+dim(DT2.oa)
+```
+
+
+#### Correct known issues
+```{r}
+DT2.oa <- DT2.oa %>%
+  mutate(Species = ifelse(Species == "lachenalii subsp.",
+                          "Hieracium lachenalii",
+                          Species)) %>%
+  mutate(Species = ifelse(Species == "virgaurea subsp.",
+                          "Solidago virgaurea",
+                          Species)) %>%
+  mutate(Species = ifelse(Species == "murorum subsp.",
+                          "Hieracium murorum",
+                          Species)) %>%
+  mutate(Species = ifelse(Species == "dubius subsp.",
+                          "Tragopogon dubius",
+                          Species))
+```
+
+
 
 
 ### CWM data
@@ -567,7 +720,8 @@ CWM.oa2 <- CWM.oa0 %>%
   group_by(PlotObservationID) %>%
   summarize(TraitCoverage_cover=sum(LeafArea, na.rm=T),
             Species_richness=n(),
-            TraitCoverage_pa=mean(LeafArea>0))
+            TraitCoverage_pa=mean(LeafArea>0), 
+            .groups = 'drop')
 ```
 
 Calculate CWM and CWV for each trait in each plot
@@ -734,7 +888,7 @@ table1 <- databases %>%
   distinct() %>% 
   left_join(header.oa %>% 
               group_by(GIVD_ID) %>% 
-              summarize(contributed_plots=n()), 
+              summarize(contributed_plots=n(), .groups = 'drop'), 
             by=c("GIVD ID"="GIVD_ID")) %>% 
   dplyr::select(`GIVD ID`,`DB_name GIVD`, Custodian, `Deputy custodian`, n_Plots, contributed_plots, Citation) %>% 
   filter(!is.na(contributed_plots))
@@ -799,7 +953,7 @@ readr::write_lines("Table: Description of the variables contained in the ‘head
 readr::write_lines(kable(table2, format = "markdown"), file = out.file, append=T)
 ```
 ### Create list of coauthors
-```{r echo = F, results = 'hide', message=F}
+```{r echo = T, results = 'hide', message=F}
 library(stringr)
 allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
 allaffiliations <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Affiliations.csv") %>% 
@@ -868,14 +1022,14 @@ create.yaml <- function(x, file.output){
     mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", "))
     write_lines(tmp[[1]], file = file.output, append=T) 
 }
-#create empty affiliation file
-affi.out <- "_output/affiliations_yaml.txt"
+
+affi.out <- "_output/affiliations_yaml.txt" #create empty affiliation file
+##populate yaml file with affiliaiton info
 write_lines("", file = affi.out)
 lapply(affiliations %>% 
          dplyr::select(name) %>% 
          distinct() %>% 
          pull(name), create.yaml, affi.out)
-  
 ```
 
 
