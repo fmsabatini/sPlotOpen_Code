@@ -46,7 +46,7 @@ write("TMPDIR = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('TM
 write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_USER'), '.Renviron'))
 #rasterOptions(tmpdir="/data/sPlot/users/Francesco/_tmp")
 ```
-## Import and clean data
+# Import and clean data
 
 Import and fix sPlot data. Import and attach database-level information and [GIVD](https://www.givd.info/) codes. 
 ```{r, cache=T, results="hide", message=F, warning=F}
@@ -129,7 +129,7 @@ knitr::kable(summary.sel.final %>%
 ```
 Out of the `r length(sel1)` plots selected in the first run of the resampling, `r firstchoice %>% filter(first.choice==T & Usable =="Yes") %>% pull(n)` can be used. The remaining `r firstchoice %>% filter(first.choice==T & Usable =="No") %>% pull(n)` require to be replaced.
 
-## Replace plots not usable with reserves
+# Replace plots not usable with reserves
 In those cases where we do not have permission to use a plot selected in resampling run #1 [first.choice], we replace it with a reserve belonging to the same cell in the PCA space grid. Reserves correspond to plots selected in resamplings runs #2 or #3, whose use was approved by the respective custodians. Additionally we considered as usable reserves ALL those plots belonging to datasets whose custodian gave us unconditional permission to use their data.  
 PCA is calculated in the environmental space defined by the 30 climatic and soil variables used in Bruelheide et al. 2018 NEE.  
 
@@ -215,8 +215,8 @@ knitr::kable(selected.reserves %>%
 By selecting plots within the same cell in the PCA grid, we can only replace `r nrow(selected.reserves)`, out of the `r length(toreplace)` non-usable first choice plots. 
 
 
-## Build sPlot OA dataset
-### Header
+# Build sPlot OA dataset
+## Header
 ```{r}
 header.oa <- header %>% 
   filter(PlotObservationID %in% (usable.plots123 %>%
@@ -322,7 +322,7 @@ header.oa <- header.oa %>%
 ```
 
 
-### DT Table
+## DT Table
 
 Complement taxon group using info from sPlot 3.0 and cross-matching congeneric species
 ```{r, warning=F}
@@ -382,7 +382,8 @@ Clean up `DT2.oa` from all non vascular plant records and recalculate relative c
 
 ```{r}
 DT2.oa <- DT2.oa %>% 
-  filter(Taxon.group != c("Alga", "Lichen", "Moss")) %>% 
+  filter(is.na(Taxon.group) | 
+           !Taxon.group %in% c("Alga", "Lichen", "Moss")) %>% 
   left_join({.} %>%
               group_by(PlotObservationID) %>% 
               summarize(tot.cover=sum(Relative.cover), .groups = 'drop'), 
@@ -396,7 +397,7 @@ DT2.oa <- DT2.oa %>%
   dplyr::select(-Layer)
 ```
 
-#### Abundance and cover data
+### Abundance and cover data
 
 Species abundance information varies across datasets and plots. While for the large majority of plots abundance values are returned as percentage cover, there is a subset where abundance is returned with different scales. These are marked in the column `Cover code` as follows:
 \newline \newline
@@ -411,7 +412,7 @@ Still, it's not really intuitive that in case `Cover code` belongs to one of the
 To make the cover data more user friendly, I simplify the way cover is stored, so that there are only two columns:  
 `Ab_scale` - to report the type of scale used  
 `Abundance` - to coalesce the cover\\abundance values previously in the columns `Cover %` and `x_`.  
-\\newline
+\newline
 
 This information is stored in a working copy of the DT table, before standardization to relative cover. Import it and filter only plots in open-access selection.
 
@@ -539,7 +540,7 @@ knitr::kable(DT2.oa %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
-#### Update individual datasets
+### Update individual datasets
 There are two datasets whose species names need to be updated before releasing OA.
 
 
@@ -617,26 +618,28 @@ congo.new %>%
   distinct(Species, .keep_all=T)
 
 ### get all unmatched species and run through TPL
-# tocheck <- congo.new %>% 
-#  filter(is.na(New_species)) %>% 
-#  pull(Species) %>% 
-#  unique()
-#
-# library(Taxonstand)
-# checked <- TPL(tocheck)
-# checked2 <- data.frame(old_species=tocheck) %>% 
-#   bind_cols(checked %>% 
-#               dplyr::select(New.Genus, New.Species)) %>% 
-#   replace_na(list(New.Genus="", New.Species="")) %>% 
-#   unite(New.Genus, New.Species, col=new_species, sep=" ") %>% 
-#   mutate(new_species=str_replace(new_species, pattern=" *$", replacement=""))
-# ## all unmatched names are valid names, based on TPL2
-# print(checked2, n=12)
+ tocheck <- congo.new %>% 
+  filter(is.na(New_species)) %>% 
+  pull(Species) %>% 
+  unique()
+
+ library(Taxonstand)
+ checked <- TPL(tocheck)
+ checked2 <- data.frame(old_species=tocheck) %>% 
+   bind_cols(checked %>% 
+               dplyr::select(New.Genus, New.Species)) %>% 
+   replace_na(list(New.Genus="", New.Species="")) %>% 
+   unite(New.Genus, New.Species, col=new_species, sep=" ") %>% 
+   mutate(new_species=str_replace(new_species, pattern=" *$", replacement="")) %>% 
+   mutate(old_species=as.character(old_species))
 
 ## assign unmatched old names to new names
 congo.new <- congo.new %>% 
-  mutate(New_species=ifelse(is.na(New_species), 
-                            Species, New_species))
+  left_join(checked2, 
+            by=c("Species"="old_species")) %>% 
+  mutate(New_species=coalesce(New_species, new_species)) %>% 
+  dplyr::select(-new_species)
+  
 ```
 
 Format `congo.new` to match `DT2.oa`
@@ -672,8 +675,210 @@ DT2.oa <- DT2.oa %>%
 dim(DT2.oa)
 ```
 
+#### AF-00-009 - Angola
+Import updated data 
+```{r}
+angola.new.raw <- openxlsx::read.xlsx("_data/Update_Angola/TFO_DB.xlsx", sheet=1)
 
-#### Correct known issues
+header.sel.TV <- header.oa %>%
+  dplyr::select(PlotObservationID, GIVD_ID) %>% 
+  left_join(header.TV %>% 
+              dplyr::select(PlotObservationID, "TV2 relevé number"),
+            by="PlotObservationID")
+
+## REMEMBER TO double check if plot level total vegetation cover match to header!
+
+## attach PlotObservation ID
+angola.new <- angola.new.raw %>% 
+  dplyr::select(Plot.number, Species.name, Cover.total) %>% 
+  inner_join(header.sel.TV %>% 
+               filter(GIVD_ID=="AF-00-009") %>% 
+               dplyr::select(-GIVD_ID),
+            by=c("Plot.number"="TV2 relevé number")) %>% 
+## one plot missing from update
+  dplyr::select(PlotObservationID, Species=Species.name, Cover=Cover.total)
+
+## join names from backbone to congo.new
+angola.new <- angola.new %>% 
+  left_join(backbone.splot2.1.try3 %>% 
+              dplyr::select(Species=names.sPlot.TRY, New_species=name.short.correct) %>% 
+              distinct(), 
+            by="Species") %>% 
+  mutate(New_species=str_replace(New_species, " *$", "")) #strip whitespace at the end of species names
+
+## check species names to change, based on the backbone
+# angola.new %>% 
+#   filter(Species != New_species) %>% 
+#   distinct(Species, .keep_all=T)
+# 
+# angola.new %>% 
+#   filter(is.na(New_species)) %>% 
+#   distinct(Species, .keep_all=T)
+# 
+```
+
+Out of the `r length(unique(angola.new$Species))` species contained in the Angola update, `r angola.new %>% distinct(Species, .keep_all=T) %>% filter(!is.na(New_species)) %>% nrow()` matched an entry in the backbone, while the remaining `r angola.new %>% distinct(Species, .keep_all=T) %>% filter(is.na(New_species)) %>% nrow()` returned `NA`. 
+
+```{r, eval=F}
+### get all unmatched species and run through TPL
+tocheck <- angola.new %>%
+  filter(is.na(New_species)) %>%
+  pull(Species) %>%
+  unique()
+library(Taxonstand)
+checked <- TPL(tocheck)
+save(checked, file = "_data/Update_Angola/Species_Checked_TPL.RData")
+```
+```{r}
+load(file = "_data/Update_Angola/Species_Checked_TPL.RData")
+```
+
+New `r checked %>% filter(Plant.Name.Index==T) %>% nrow()` matches found.
+```{r}
+
+
+checked2 <- checked %>%
+  filter(Plant.Name.Index==T) %>% 
+  dplyr::select(Taxon, New.Genus, New.Species) %>% 
+  replace_na(list(New.Genus = "", New.Species = "")) %>%
+  unite(New.Genus, New.Species, col = new_species, sep = " ") 
+
+angola.new <- angola.new %>% 
+  as_tibble() %>% 
+  left_join(checked2, by=c("Species"="Taxon")) %>% 
+  mutate(New_species=coalesce(New_species,new_species)) %>% 
+  dplyr::select(-new_species)
+```
+
+There are still `r angola.new %>% filter(is.na(New_species)) %>% distinct(Species) %>% nrow()` unmatched species. Most of them haven't been yet identified, and only have working names, such as `r angola.new %>% filter(is.na(New_species)) %>% distinct(Species) %>% sample_n(3) %>% pull(Species) %>% paste(collapse="; ")` [Three randomly selected species]. Yet a few of these, at least have info about the family. Extract this.
+
+```{r}
+unmatched <- angola.new %>% filter(is.na(New_species)) %>% distinct(Species) %>% pull(Species)
+unmatched <- data.frame(Species=unmatched, family=str_extract(unmatched, pattern='([^\\s]+aceae)'))
+
+angola.new <- angola.new %>% 
+  left_join(unmatched, by="Species") %>% 
+  mutate(New_species=coalesce(New_species, family)) %>% 
+  dplyr::select(-family)
+```
+There are still `r angola.new %>% filter(is.na(New_species)) %>% distinct(Species) %>% nrow()` unmatched species. Some of them can be manually parsed, at least at genus level
+
+```{r}
+species.dictionary <- c('Asparagus aff. nelsii x baumii' = "Protasparagus nelsii",
+  'Asparagus spaerlich' = "Asparagus",
+  'Baphia sp. geoxyle' = "Baphia",
+  'Barleria like lanceolata' = "Barleria",
+  'Brachiaria  132728' = "Brachiaria",
+  'Bulbostylis sp. 132553' = "Bulbostylis",
+  'Bulbostylis sp. 134794' = "Bulbostylis",
+  'cf. Andropogon sp. 132765' = "Andropogon",
+  'cf. Dalbergia 134918' = "Dalbergia",
+  'Combretum Str imparapinnate krusselig 134690' = "Combretum",
+  'Commelina pallidispatha' = "Commelina pallidispatha",
+  'Crotalaria sp. Murray Hudson' = "Crotalaria",
+  'Cyperus Simse gelb Festland' = "Cyperus",
+  'Desmodium sp. 136411' = "Desmodium",
+  'Diospyros pseudomespilus ssp. brevicalyx' = "Diospyros pseudomespilus",
+  'Droogmannsia megalantha' = "Droogmansia megalantha",
+  'einähriges Gras von gestern 132299' = "Poaceae",
+  'Eragrostis kleinblütig fädig 132495' = "Eragrostis",
+  'Fadogia flaum Spross 136500' = "Fadogia",
+  'Fadogia Zwergstrauch Frucht rot 136530' = "Fadogia",
+  'Gras branched Ähre 132297' = "Poaceae",
+  'Gras non-cylindriflora' = "Poaceae",
+  'Hafer, Haarkranz mit Knoten 132293' = "Poaceae",
+  'Indigofera Rundblatt braunbehaart' = "Indigofera",
+  'Kyllinga sp. 134793' = "Kyllinga",
+  'Loudetia sp. 134798' = "Loudetia",
+  'Mammutgras Bl breit' = "Poaceae",
+  'Mammutgrass 133127' = "Poaceae",
+  'Melinis sp.' = "Melinis",
+  'Pavetta sp. 134685' = "Pavetta",
+  'Phileptera nelsii' = "Philenoptera nelsii",
+  'Pleiotaxis sp. doldig spitz' = "Pleiotaxis",
+  'Pseudocarex rotgruen 134518' = "Poaceae",
+  'Syzygium guineense ssp. barotsense' = "Syzygium guineense",
+  'Terminalia serciea' = "Terminalia sericea",
+  'Thesium von gestern' = "Thesium",
+  'Tricalysia black glands' = "Tricalysia",
+  'Triclaysia black glands' = "Tricalysia",
+  'Tristachya sp. 132788' = "Tristachya",
+  'Uapaca pinnat 134496b' = "Uapaca",
+  'Uapaca schmalbltrg 134835' = "Uapaca",
+  'Xyris gelb dick 135539' = "Xyris",
+  'Xyris gelb groß binsenartig' = "Xyris",
+  'Xyris goldgelb 132737' =   "Xyris"
+)
+species.dictionary <- data.frame(Species=names(species.dictionary), new_species=species.dictionary)  
+
+angola.new <- angola.new %>% 
+  left_join(species.dictionary, by="Species") %>% 
+  mutate(New_species=coalesce(New_species, new_species)) %>% 
+  dplyr::select(-new_species)
+
+## exclude mosses
+angola.new <- angola.new %>% 
+  filter(!grepl(pattern="Moos|moos", x=Species))
+```
+Little can be done with the remaining `r angola.new %>% filter(is.na(New_species)) %>% nrow()` species.
+
+Format `angola.new` to match `DT2.oa`
+```{r, warning=F}
+angola.out <- angola.new %>%
+  rename(Original_abundance = Cover, 
+         Original_species=Species) %>% 
+  rename(Species=New_species) %>%
+  #attach taxon group from Backbone 3.0
+  left_join(Backbone %>% 
+              distinct(Name_sPlot_TRY, `Taxon group`) %>% 
+              rename(Taxon_group=`Taxon group`), 
+            by=c("Original_species"="Name_sPlot_TRY")) %>% 
+  mutate(species2=Species) %>% 
+  separate(species2, into=c("Genus"), sep=" ") %>% 
+  ## cross complement internally, based on Genus
+  left_join(DT2.oa %>% 
+              distinct(Species, .keep_all=T) %>% 
+              separate(Species, into=c("Genus"), sep=" ") %>% 
+              filter(!is.na(Taxon_group)) %>% 
+              distinct(Genus, Taxon_group),
+            by="Genus") %>% 
+  mutate(Taxon_group=coalesce(Taxon_group.x, Taxon_group.y)) %>% 
+  dplyr::select(-Taxon_group.x, -Taxon_group.y) %>% 
+  mutate(Taxon_group=ifelse(Taxon_group=="Unknown", NA, Taxon_group)) %>% 
+  mutate(Abundance_scale = "PercCover") %>%
+  # calculate relative cover
+  left_join({.} %>%
+    group_by(PlotObservationID) %>%
+    summarize(Tot_abundance = sum(Original_abundance), .groups = "drop"),
+    by = "PlotObservationID") %>%
+  mutate(Relative_cover = Original_abundance / Tot_abundance) %>% 
+  dplyr::select(all_of(colnames(DT2.oa))) %>% 
+  #filter out species with zero abundance -> probably due to species aggregation after taxa identification
+  filter(Original_abundance!=0)
+
+## compare a random plot before and after replacement
+plotsel <- sample(unique(angola.out$PlotObservationID), 1)
+DT2.oa %>% filter(PlotObservationID==plotsel) %>% print(n=25)
+angola.out %>% filter(PlotObservationID==plotsel) %>% print(n=25)
+
+
+
+```
+
+Replace entries in `DT2.oa`
+```{r}
+dim(DT2.oa)
+DT2.oa <- DT2.oa %>% 
+  filter(!PlotObservationID %in% (angola.out %>% 
+                                   pull(PlotObservationID) %>% 
+                                   unique())) %>% 
+  bind_rows(angola.out) %>% 
+  arrange(PlotObservationID, Species)
+dim(DT2.oa)
+```
+
+
+### Correct known issues
 ```{r}
 DT2.oa <- DT2.oa %>%
   mutate(Species = ifelse(Species == "lachenalii subsp.",
@@ -693,7 +898,7 @@ DT2.oa <- DT2.oa %>%
 
 
 
-### CWM data
+## CWM data
 
 Load species level gap-filled trait data
 ```{r}
@@ -769,8 +974,8 @@ CWM.oa <- CWM.oa %>%
 ```
 
 
-## Figures and Tables
-### Geographic distribution of plots
+# Figures and Tables
+## Geographic distribution of plots
 
 Template of Global map
 ```{r, cache=T, results="hide", warning=F, message=F}
@@ -856,7 +1061,7 @@ w3a +
 
 ```
 
-### Whittaker Biome Graph
+## Whittaker Biome Graph
 Get climatic data
 ```{r}
 load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
@@ -877,7 +1082,7 @@ whittaker_base_plot() +
 ```
 
 
-### Summary tables
+## Summary tables
 Table 1 - Database level information
 
 ```{r}
@@ -910,7 +1115,7 @@ Table 2 - Metadata and environmental data included in header
 Create table 2 
 ```{r}
 table2 <- header.oa %>% 
-summarize_at(.vars=vars(!starts_with("PlotObservationID")),
+  summarize_at(.vars=vars(!starts_with("PlotObservationID")),
             .funs = list(xxxNo.records=~sum(!is.na(.)),
                xxxType.of.variable=~class(.), 
                xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
@@ -920,7 +1125,7 @@ summarize_at(.vars=vars(!starts_with("PlotObservationID")),
                                          ifelse(is.logical(.),
                                                 paste(names(table(.)), "=", 
                                                       table(.), collapse="; "),
-                                                NA)))))) %>% 
+                                                "")))))) %>% 
   gather(key="Variable") %>% 
   separate(Variable, into = c("Variable", "feature"), sep="_xxx") %>% 
   spread(key=feature, value = value) %>% 
@@ -937,22 +1142,26 @@ knitr::kable(table2,
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
-## Save Ouput
+
+# Save Ouput
 ```{r}
 save(DT2.oa, header.oa, CWM.oa, file = "_output/sPlot_OPEN.RData")
+#export list of PlotObservationIDS
+write_delim(header.oa %>% dplyr::select(PlotObservationID), file = "_output/Plot_list.txt")
 ```
-### Sink tables for Manubot
+## Sink tables for Manubot
 ```{r}
 out.file <- "_output/91.ManubotTables.md"
 readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
-readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='11'}\n", file = out.file, append=T)
+readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='Table 1'}\n", file = out.file, append=T)
 readr::write_lines("\n \n", file = out.file, append=T)
 readr::write_lines(kable(table1, format = "markdown"), file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='12'}\n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='Table 2'}\n", file = out.file, append=T)
 readr::write_lines(kable(table2, format = "markdown"), file = out.file, append=T)
 ```
-### Create list of coauthors
+
+## Create list of coauthors
 ```{r echo = T, results = 'hide', message=F}
 library(stringr)
 allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
@@ -1033,7 +1242,7 @@ lapply(affiliations %>%
 ```
 
 
-## SessionInfo
+# SessionInfo
 ```{r}
 sessionInfo()
 ```
