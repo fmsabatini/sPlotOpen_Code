@@ -55,17 +55,6 @@ header.sel <- header %>%
   filter(PlotObservationID %in% PlotID123$PlotObservationID)
 
 
-#show distribution of selected plots
-countries <- map_data("world")
-ggworld <- ggplot(countries, aes(x=long, y=lat, group = group)) +
-  geom_polygon(col=NA, lwd=3, fill = gray(0.9)) +
-  geom_point(data=header.sel, aes(x=POINT_X, y=POINT_Y, group=1), col="red", alpha=0.5, cex=0.7, shape="+") + 
-  theme_bw()
-ggworld
-
-
-
-
 
 ### Data from Stephan - Check for ID matches
 header.TV <- read_delim(file = "_data/sPlot-2.1_header.csv", delim = "\t", 
@@ -410,5 +399,10 @@ write_csv(summary.sel.final, "_output/summary.sel.final.csv")
 write_csv(header.sel.final, "_output/header.sel.final.csv")
 
 
+### Export plot ID of Angola data for Rasmus Revermann. Angola data will be updated.
 
-
+angola.sel <- header.sel.TV %>% 
+  filter(PlotObservationID %in% header.sel.final$PlotObservationID) %>% 
+  filter(Dataset=="Angola") %>% 
+  select(1:6, 8) 
+write_csv(angola.sel, "_output/Angola_sel.csv")
