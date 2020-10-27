@@ -28,6 +28,7 @@ library(tidyverse)
 #install_version("broom", version = "0.5.5")
 #install_version("modelr", version = "0.1.6")
 library(openxlsx)
+library(bib2df)
 library(knitr)
 library(kableExtra)
 library(viridis)
@@ -55,8 +56,6 @@ load("/data/sPlot/releases/sPlot2.1/sPlot_header_20161124.RData")
 #fix header data
 source("/data/sPlot/users/Francesco/_sPlot_Management/Fix.header.R")
 header <- fix.header(header, exclude.sophy = F)
-#Import database-level information
-databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
 ```
 Import database level answers from custodians. This table reports whether the plots from a given dataset can be released open-access without condition (Yes); whether this is true only for a set of manually selected plots (Conditional); or cannot be used (No).
 ```{r}
@@ -390,8 +389,8 @@ Biblioref.raw <- read_delim("_data/PlotLevelInfo/BiblioReference_v2.txt", delim=
 ```
 Bibliographic references could be parsed using the library [anystyle](https://github.com/inukshuk/anystyle), in ruby. Yet, the output need some additional cleaning. Below some code which might help for the scope. It's just an example and needs further refinements.  
 
-Do some string modification before parsing with anystyle.Need to convert all words being completely upper case to lower case, with first letter uppercase.
-```{r, eval=F}
+Do some string modification before parsing with anystyle. Need to convert all words being completely upper case to lower case, with first letter uppercase.
+```{r}
 ## Convert words being completely upper case to lower case, and mantain only first letter uppercase
 ## This improves considerably parsing using anystyle
 .simpleCap <- function(x) {
@@ -401,28 +400,118 @@ Do some string modification before parsing with anystyle.Need to convert all wor
           sep = "", collapse = "-")
 }
 
-br1 <- Biblioref.raw
-for(i in 1:length(br1)){
-  tmp <- str_split(br1[[i]], pattern = " ")[[1]]
+br1 <- Biblioref.raw %>% 
+  distinct(Fullref) %>% 
+  arrange(Fullref)
+for(i in 1:nrow(br1)){
+  tmp <- str_split(br1[i,], pattern = " ")[[1]]
   tochange <- str_detect(tmp, "^[:upper:]+$|^[:upper:]+,$|^[:upper:]+-[:upper:]+$") & str_count(tmp, pattern="[A-Za-z]|-")>1 #doesn't match non ASCII letters, though
-  tmp[tochange] <- sapply(tmp[tochange], .simpleCap)
-  br1[i] <- paste(tmp, collapse=" ")
+  if(sum(tochange)>0){
+    tmp[tochange] <- sapply(tmp[tochange], .simpleCap)
+    br1[i,] <- paste(tmp, collapse=" ")
+  }
 }
 
-write_lines(br1, "_data/PlotLevelInfo/BiblioReference.clean.txt")
+#split in chunks with 300 refs each
+nchunks <- ceiling(nrow(br1)/300)
+iii <- 1:nrow(br1)
+splitted <- split(iii, sort(iii%%nchunks))
 ```
 
-Check if I can use Ruby's `anystyle` library inside RMarkdown.  
-Parsing is in general pretty good, yet not perfect. I leave this on standby for the time being.
-```{ruby, eval=F, engine.path = '~/.rubies/ruby-2.7.2/bin/ruby'}
+```{r, eval=F}
+##clean up before saving
+filenames <- paste0("_data/PlotLevelInfo/Ref_to_parse_", 1:nchunks, ".txt")
+if(any(file.exists(filenames))){
+  #Delete file if it exists
+  file.remove(filenames)
+}
+
+for(i in 1:nchunks){
+  tmp <- br1$Fullref[splitted[[i]]]
+  write_lines(tmp, paste0("_data/PlotLevelInfo/Ref_to_parse_", i, ".txt"), )
+}
+```
+These references were submitted to the [anystyle](https://github.com/inukshuk/anystyle)'s web interface. Output was exported to bibTex.  
+Reimport and match.
+```{r, message=F, warning=F}
+filenames <- paste0("_data/PlotLevelInfo/anystyle_", 1:nchunks, ".bib")
+bib.list <- lapply(filenames, bib2df)
+bib.df <- bind_rows(bib.list) %>% 
+   select_if(function(x) !(all(is.na(x)) | all(x=="")))
+br1.out <- bind_cols(Biblioref.raw %>% 
+                   distinct(Fullref) %>% 
+                   arrange(Fullref), bib.df)
+```
+Parse additional references not stored in TURBOVEG3's dictionary
+```{r}
+br2 <- plotinfo.raw %>%
+  dplyr::select(`Biblio reference`) %>% 
+  distinct(`Biblio reference`) %>% 
+  arrange(`Biblio reference`) %>% 
+  filter(!is.na(`Biblio reference`)) %>% 
+  filter(!str_detect(`Biblio reference`, pattern ="^\\d+$"))
+
+#split in chunks with 300 refs each
+nchunks2 <- ceiling(nrow(br2)/300)
+iii2 <- 1:nrow(br2)
+splitted2 <- split(iii2, sort(iii2%%nchunks2))
+```
+Manually submit the files to [anystyle](https://github.com/inukshuk/anystyle)'s web interface. Output was exported to bibTex. 
+```{r, eval=F}
+##clean up before saving
+filenames <- paste0("_data/PlotLevelInfo/Ref2_to_parse_", 1:nchunks2, ".txt")
+if(any(file.exists(filenames))){
+  #Delete file if it exists
+  file.remove(filenames)
+}
+
+for(i in 1:nchunk2s){
+  tmp <- br2$`Biblio reference`[splitted2[[i]]]
+  write_lines(tmp, paste0("_data/PlotLevelInfo/Ref2_to_parse_", i, ".txt"), )
+}
+```
+Reimport and match
+```{r, message=F, warning=F}
+filenames2 <- paste0("_data/PlotLevelInfo/anystyle2_", 1:nchunks2, ".bib")
+bib.list <- lapply(filenames2, bib2df)
+bib.df <- bind_rows(bib.list) %>% 
+   select_if(function(x) !(all(is.na(x)) | all(x=="")))
+
+br2.out <- bind_cols(br2, bib.df) %>% 
+  rename(Fullref=`Biblio reference`)
+```
+
+Create a unique df with all formatted references and correct duplicated bibtexkeys
+```{r}
+#define helper function
+rename.duplicates <- function(x){
+  tick <- 1
+  while(sum(duplicated(x)) > 0) {
+    #print(tick)
+    if (tick == 1) {x[duplicated(x)] <- paste0(x[duplicated(x)], tick, sep = "")}
+    if (tick > 1) {
+      x[duplicated(x)] <-paste0(str_sub(x[duplicated(x)], end = -2), #strip last character of string
+               tick, sep ="")}
+    tick <- tick + 1
+  }
+  return(x)
+}
+
+#fix duplicated bibtex keys
+bib.oa <- bind_rows(br1.out, br2.out)
+bib.oa$BIBTEXKEY <- rename.duplicates(bib.oa$BIBTEXKEY)
+```
+
+
+```{ruby, eval=F, echo=F, engine.path = '~/.rubies/ruby-2.7.2/bin/ruby'}
+#Check if I can use Ruby's `anystyle` library inside RMarkdown.  
+#Parsing is in general pretty good, yet not perfect. I leave this on standby for the time being.
+
 puts RUBY_VERSION
-```
-
-```{ruby, eval =F, engine.path = '~/.rubies/ruby-2.7.2/bin/ruby'}
 require "anystyle"
-File.open("BiblioReference.clean.txt", "r") do |file_handle|
+File.open("_data/PlotLevelInfo/BiblioReference.clean.txt", "r") do |file_handle|
     file_handle.each_line do |ref|
-      File.open("output.txt", mode:"a") {|f| f.write AnyStyle.parse ref }
+      File.open("_data/PlotLevelInfo/output.txt", mode:"a") {|f| f.write AnyStyle.parse ref }
     end
   end
 ```
@@ -438,7 +527,9 @@ plotinfo.biblio <- plotinfo.raw %>%
   left_join(Biblioref.raw, by="PlotObservationID") %>% 
   #coalesce into a unique field
   mutate(Biblioreference=coalesce(Fullref, Biblioreference, `Biblio reference`, PUBL, THESIS)) %>% 
-  dplyr::select(PlotObservationID, Biblioreference)
+  dplyr::select(PlotObservationID, Biblioreference) %>% 
+  left_join(bib.oa %>% 
+              dplyr::select(Fullref, BIBTEXKEY), by=c("Biblioreference"="Fullref")) 
 ```
 Biblioreference information exists for `r plotinfo.biblio %>% filter(!is.na(Biblioreference)) %>% nrow()` plots.
 
@@ -577,6 +668,7 @@ metadata.oa <- plotinfo.raw %>%
   left_join(plotinfo.project, by="PlotObservationID") %>% 
   relocate(Remarks, .after=last_col()) %>% 
   relocate(GUID, .after=last_col())
+
 ```
 
 ```{r, echo=F}
@@ -587,7 +679,36 @@ knitr::kable(metadata.oa %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
-The vast majority of plots `r metadata.oa %>% filter_at(.vars = vars(Releve_author:Remarks), .vars_predicate = any_vars(!is.na(.))) %>% nrow()` out of `r nrow(metadata.oa)` have at least one entry among the selected plot level info.
+The vast majority of plots `r metadata.oa %>% filter_at(.vars = vars(Releve_author:Remarks), .vars_predicate = any_vars(!is.na(.))) %>% nrow()` out of `r nrow(metadata.oa)` have at least one entry among the selected plot level info.  
+
+### Create reference list
+Create function to create reference list, based on plot selection. Ideally the user will be able to conveniently create a citation report for the selection of plots he\\she is planning to use.
+```{r}
+sPlotOpen_citation <- function(IDs, out.file){ 
+  ## IDs - vector of PlotObservationIDs,
+  ## out.file - filename where to sink the reference list (also as a .bib file)
+  require(dplyr)
+  require(bib2df)
+  bibtexkeys <- metadata.oa %>% 
+    filter(PlotObservationID %in% IDs) %>% 
+    distinct() %>% 
+    pull(BIBTEXKEY )
+  df2bib(bib.oa %>% 
+           dplyr::select(-Fullref) %>% 
+           filter(BIBTEXKEY %in% bibtexkeys), file = out.file)
+  message("WARNING: This is a beta-version. References were parsed and converted automatically. They might need to be double-checked")
+}
+```
+Demonstration
+```{r}
+sel.plots <- sample(header.oa$PlotObservationID, 100)
+filename <- "_output/sPlot_BibText.bib"
+sPlotOpen_citation(IDs=sel.plots, out.file = filename)
+
+# show first 20 lines of output file
+read_lines(filename, n_max = 20)
+```
+
 
 
 ## DT Table
@@ -1238,8 +1359,7 @@ dim(CWM.oa)
 Rename fields to follow convention
 ```{r}
 CWM.oa <- CWM.oa %>% 
-  rename_all(.funs=~gsub('\\.', '_', x = .)) %>% 
-  colnames()
+  rename_all(.funs=~gsub('\\.', '_', x = .))
 ```
 
 
@@ -1290,7 +1410,7 @@ header.sf <- SpatialPointsDataFrame(coords= header.oa %>%
 
 Map of plot distribution - Version 1 - Coloured point.  
 Each colour represents a database. Please note there are not enough colours in the palette to represent all 103 datasets
-```{r, fig.width=8, fig.height=6, fig.align="center", warning=F, message=F}
+```{r, fig.width=8, fig.height=6, fig.align="center", warning=F, message=F, cache=T}
 w3a + 
   geom_sf(data=header.sf, aes(color=Dataset), pch="+", size=1, alpha=0.8) + # aes(col=Dataset),
   geom_sf(data = countries, col = "grey10", fill=NA, lwd = 0.3) + 
@@ -1298,7 +1418,7 @@ w3a +
 ```
 
 Version 2  - hexagons
-```{r, fig.width=8, fig.height=6, fig.align="center", message=F}
+```{r, fig.width=8, fig.height=6, fig.align="center", message=F, cache=T}
 header2 <- header.oa %>% 
   select(PlotObservationID, Latitude, Longitude) %>% 
   filter(!(abs(Longitude) >171 & abs(Latitude>70)))
@@ -1340,7 +1460,7 @@ climate.oa <- climate %>%
   rename(PlotObservationID=PlotID)
 ```
 
-```{r, fig.width=8, fig.height=5, fig.align="center", message=F}
+```{r, fig.width=8, fig.height=5, fig.align="center", message=F, cache=T}
 whittaker_base_plot() +
   theme_classic() + 
   geom_point(data=climate.oa %>% 
@@ -1352,6 +1472,42 @@ whittaker_base_plot() +
 
 
 ## Summary tables
+Import databases and create reference tags
+```{r, message=F, warning=F}
+#Import BibTex
+db.bib <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
+#Import database-level information
+databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
+
+# create citation tags that can be picked up by Manubot
+databases <- databases %>% 
+  left_join(db.bib %>% 
+              dplyr::select(BIBTEXKEY, DOI, URL), 
+            by="BIBTEXKEY") %>% 
+  mutate(tag=NA) %>% 
+  mutate(tag=ifelse(!is.na(DOI), 
+                    paste0("@doi:", DOI), 
+                    tag)) %>% 
+#  mutate(tag=ifelse((is.na(DOI) & !is.na(URL)), 
+#                    paste0("@", URL), 
+#                    tag)) %>% 
+  filter(`GIVD ID` %in% unique(header.oa$GIVD_ID)) %>% 
+  filter(is.na(tag)) %>% 
+  filter(!is.na(Citation)) %>% 
+  mutate(tag=ifelse( (is.na(tag) & `GIVD ID` %in% unique(header.oa$GIVD_ID) & !is.na(Citation)), 
+                     paste0("@", word(Citation, 1)), 
+                     tag)) %>% 
+    dplyr::select(-DOI, -URL, -BIBTEXKEY)
+  
+## create tags also for paper without doi
+databases %>% 
+  filter(`GIVD ID` %in% unique(header.oa$GIVD_ID)) %>% 
+  filter(is.na(tag)) %>% 
+  filter(!is.na(Citation))
+```
+
+
+
 Table 1 - Database level information
 
 ```{r}
@@ -1364,7 +1520,7 @@ table1 <- databases %>%
               group_by(GIVD_ID) %>% 
               summarize(contributed_plots=n(), .groups = 'drop'), 
             by=c("GIVD ID"="GIVD_ID")) %>% 
-  dplyr::select(`GIVD ID`,`DB_name GIVD`, Custodian, `Deputy custodian`, n_Plots, contributed_plots, Citation) %>% 
+  dplyr::select(`GIVD ID`,`DB_name GIVD`,  n_Plots, contributed_plots, Citation) %>%  #Custodian, `Deputy custodian`,
   filter(!is.na(contributed_plots))
 
 write_csv(table1, "_output/Table1_Databases.csv")
@@ -1414,7 +1570,18 @@ knitr::kable(table2,
 
 # Save Ouput
 ```{r}
-save(DT2.oa, header.oa, metadata.oa, CWM.oa, file = "_output/sPlot_OPEN.RData")
+path <- "_sPlotOpenDB"
+save(DT2.oa, header.oa, metadata.oa, CWM.oa, bib.oa, sPlotOpen_citation, file = file.path(path, "_output/sPlotOpen.RData"))
+
+## Export to csv files
+write_delim(DT2.oa, file = file.path(path, "sPlotOpen_DT.txt"), delim="\t")
+write_delim(header.oa, file = file.path(path, "sPlotOpen_header.txt"), delim="\t")
+write_delim(metadata.oa, file = file.path(path, "sPlotOpen_metadata.txt"), delim="\t")
+write_delim(CWM.oa, file = file.path(path, "sPlotOpen_CWM_CWV.txt"), delim="\t")
+df2bib(bib.oa %>% 
+         dplyr::select(-Fullref), file = file.path(path, "sPlotOpen_references.bib"))
+
+
 #export list of PlotObservationIDS
 write_delim(header.oa %>% dplyr::select(PlotObservationID), file = "_output/Plot_list.txt")
 ```
