@@ -267,7 +267,9 @@ header.oa <- header.oa %>%
   mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
             ~ifelse(.>=10|.<0, NA, .)) %>% 
   mutate(`Relevé area (m²)`=ifelse(`Relevé area (m²)`<0, NA, `Relevé area (m²)`)) %>% 
-  mutate(`Date of recording`=ifelse(`Date of recording`> as.Date('2016-01-01'), NA, `Date of recording`)) %>% 
+  mutate(`Date of recording`=replace(`Date of recording`, 
+                                     list=`Date of recording`> as.Date('2016-01-01'), 
+                                     NA)) %>% 
   # Rename fields
   dplyr::select(
     #metadata + location
@@ -277,7 +279,7 @@ header.oa <- header.oa %>%
     Continent = CONTINENT,
     Country,
     Biome,
-    Date = "Date of recording",
+    Date_of_recording = "Date of recording",
     Latitude,
     Longitude,
     Location_uncertainty = "Location uncertainty (m)", #POINT_X, POINT_Y,
@@ -320,12 +322,13 @@ header.oa <- header.oa %>%
     Height_herbs_highest = "Maximum height herbs (cm)")
 ```
 
-## Plot-level Metadata
+## Metadata
 Here, we try to organize this metadata information into a few meaningful fields. For each plot we provide information on:  
 
 - Releve_author - Name of the person originally collecting the data in the field  
 - Releve_coauthors - Names of additional persons originally collecting the data in the field 
-- Biblioreference - Bibliographic reference where the plot was first published, if any  
+- DB_Biblioreference - Bibliographic reference of the dataset the plot stems from
+- Plot_Biblioreference - Bibliographic reference where the plot was first published, if any  
 - Nr_table_in_publ - Number of the table reporting the plot in the publication where it was originally published, if any  
 - Nr_releve_in_table - Plot number in the table where the plot was originally reported  
 - Original_nr_in_database - Original plot number, in the database the plot stems from  
@@ -376,16 +379,28 @@ colnames(plotinfo.raw)
 ```
 In the following subsection, we try and harmonize the information from these multiple fields.
 
-### Biblioreference
+### Dataset Biblioreference
+```{r, message=F}
+#Import dataset-level BibTex reference list
+bib.db <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
+#Import database-level information
+databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
+
+plotinfo.dbref <- header.oa %>% 
+  dplyr::select(PlotObservationID, GIVD_ID) %>% 
+  left_join(databases %>% 
+              dplyr::select(GIVD_ID=`GIVD ID`, DB_BIBTEXKEY=BIBTEXKEY), 
+            by="GIVD_ID")
+```
+
+
+
+### Plot Biblioreference
 Data from Turobevg come with a dictionary of references. These references, however, are not formally formatted, but are simple strings of text. For the time being, we keep them like that.  
 It would be more efficient to store the data using a dictionary style, where Biblioreferences are referred to with a symbol or short string, and reported in full in an associate reference list. 
-```{r}
+```{r, message=F}
 #Import biblioreference dictionary from TurboVeg3
 Biblioref.raw <- read_delim("_data/PlotLevelInfo/BiblioReference_v2.txt", delim="\t", col_names = c("PlotObservationID", "Fullref"))
-# Bibliorefs need to be cleaned, organized and selected
-##escape "
-#Biblioref.raw <- sapply(Biblioref.raw, function(x){gsub(pattern = '\\"', replacement='\\\\"', x=x)})
-
 ```
 Bibliographic references could be parsed using the library [anystyle](https://github.com/inukshuk/anystyle), in ruby. Yet, the output need some additional cleaning. Below some code which might help for the scope. It's just an example and needs further refinements.  
 
@@ -498,7 +513,7 @@ rename.duplicates <- function(x){
 }
 
 #fix duplicated bibtex keys
-bib.oa <- bind_rows(br1.out, br2.out)
+bib.oa <- bind_rows(br1.out, br2.out, bib.db)
 bib.oa$BIBTEXKEY <- rename.duplicates(bib.oa$BIBTEXKEY)
 ```
 
@@ -659,9 +674,7 @@ Recompile and explore plot-level info
 ```{r}
 metadata.oa <- plotinfo.raw %>% 
   dplyr::select(PlotObservationID, Remarks, GUID) %>% 
-  left_join(header.oa %>% 
-              dplyr::select(PlotObservationID, GIVD_ID), 
-            by="PlotObservationID") %>% 
+  left_join(plotinfo.dbref, by="PlotObservationID") %>% 
   left_join(plotinfo.author, by="PlotObservationID") %>% 
   left_join(plotinfo.biblio, by="PlotObservationID") %>% 
   left_join(plotinfo.number, by="PlotObservationID") %>% 
@@ -681,18 +694,21 @@ knitr::kable(metadata.oa %>%
 ```
 The vast majority of plots `r metadata.oa %>% filter_at(.vars = vars(Releve_author:Remarks), .vars_predicate = any_vars(!is.na(.))) %>% nrow()` out of `r nrow(metadata.oa)` have at least one entry among the selected plot level info.  
 
-### Create reference list
+### Function to ceate reference list
 Create function to create reference list, based on plot selection. Ideally the user will be able to conveniently create a citation report for the selection of plots he\\she is planning to use.
 ```{r}
-sPlotOpen_citation <- function(IDs, out.file){ 
+sPlotOpen_citation <- function(IDs, level=c("plot", "database"), out.file){ 
   ## IDs - vector of PlotObservationIDs,
+  ## level - At what level should the bibliorefrence be extracted? at the level of individual plot, or GIVD datasets?
   ## out.file - filename where to sink the reference list (also as a .bib file)
   require(dplyr)
   require(bib2df)
+  if(level=="plot") {getkey <- "BIBTEXKEY"}
+  if(level=="database") {getkey <- "DB_BIBTEXKEY"}
   bibtexkeys <- metadata.oa %>% 
     filter(PlotObservationID %in% IDs) %>% 
     distinct() %>% 
-    pull(BIBTEXKEY )
+    pull(all_of(getkey))
   df2bib(bib.oa %>% 
            dplyr::select(-Fullref) %>% 
            filter(BIBTEXKEY %in% bibtexkeys), file = out.file)
@@ -703,7 +719,7 @@ Demonstration
 ```{r}
 sel.plots <- sample(header.oa$PlotObservationID, 100)
 filename <- "_output/sPlot_BibText.bib"
-sPlotOpen_citation(IDs=sel.plots, out.file = filename)
+sPlotOpen_citation(IDs=sel.plots, level="database", out.file = filename)
 
 # show first 20 lines of output file
 read_lines(filename, n_max = 20)
@@ -1235,7 +1251,7 @@ angola.out <- angola.new %>%
   mutate(Taxon_group=coalesce(Taxon_group.x, Taxon_group.y)) %>% 
   dplyr::select(-Taxon_group.x, -Taxon_group.y) %>% 
   mutate(Taxon_group=ifelse(Taxon_group=="Unknown", NA, Taxon_group)) %>% 
-  mutate(Abundance_scale = "PercCover") %>%
+  mutate(Abundance_scale = "CoverPerc") %>%
   # calculate relative cover
   left_join({.} %>%
     group_by(PlotObservationID) %>%
@@ -1282,7 +1298,12 @@ DT2.oa <- DT2.oa %>%
                           Species)) %>%
   mutate(Species = ifelse(Species == "dubius subsp.",
                           "Tragopogon dubius",
-                          Species))
+                          Species)) %>% 
+  filter(is.na(Taxon_group) | Taxon_group != "Moss") 
+
+# drop taxon_group column
+DT2.oa <- DT2.oa %>% 
+  dplyr::select(-Taxon_group)
 ```
 
 
@@ -1475,35 +1496,26 @@ whittaker_base_plot() +
 Import databases and create reference tags
 ```{r, message=F, warning=F}
 #Import BibTex
-db.bib <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
+bib.db <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
 #Import database-level information
 databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
 
 # create citation tags that can be picked up by Manubot
 databases <- databases %>% 
-  left_join(db.bib %>% 
+  left_join(bib.db %>% 
               dplyr::select(BIBTEXKEY, DOI, URL), 
             by="BIBTEXKEY") %>% 
   mutate(tag=NA) %>% 
+  rowwise() %>% 
   mutate(tag=ifelse(!is.na(DOI), 
                     paste0("@doi:", DOI), 
                     tag)) %>% 
-#  mutate(tag=ifelse((is.na(DOI) & !is.na(URL)), 
-#                    paste0("@", URL), 
-#                    tag)) %>% 
-  filter(`GIVD ID` %in% unique(header.oa$GIVD_ID)) %>% 
-  filter(is.na(tag)) %>% 
-  filter(!is.na(Citation)) %>% 
   mutate(tag=ifelse( (is.na(tag) & `GIVD ID` %in% unique(header.oa$GIVD_ID) & !is.na(Citation)), 
                      paste0("@", word(Citation, 1)), 
                      tag)) %>% 
     dplyr::select(-DOI, -URL, -BIBTEXKEY)
   
-## create tags also for paper without doi
-databases %>% 
-  filter(`GIVD ID` %in% unique(header.oa$GIVD_ID)) %>% 
-  filter(is.na(tag)) %>% 
-  filter(!is.na(Citation))
+
 ```
 
 
@@ -1520,8 +1532,9 @@ table1 <- databases %>%
               group_by(GIVD_ID) %>% 
               summarize(contributed_plots=n(), .groups = 'drop'), 
             by=c("GIVD ID"="GIVD_ID")) %>% 
-  dplyr::select(`GIVD ID`,`DB_name GIVD`,  n_Plots, contributed_plots, Citation) %>%  #Custodian, `Deputy custodian`,
-  filter(!is.na(contributed_plots))
+  dplyr::select(`GIVD ID`,`DB_name GIVD`,  n_Plots, contributed_plots, Citation=tag) %>%  #Custodian, `Deputy custodian`,
+  filter(!is.na(contributed_plots)) %>% 
+  replace_na(list(Citation=""))
 
 write_csv(table1, "_output/Table1_Databases.csv")
 ```
@@ -1536,27 +1549,67 @@ knitr::kable(table1%>%
 
 
 Table 2 - Metadata and environmental data included in header  
+Define unit of measurements for columns
+```{r}
+um <- c('Latitude'='° (WGS84)',
+'Longitude'='° (WGS84)',
+'Location_uncertainty'='m',
+'Releve_area'='m^2^',
+'Elevation'='m a.s.l.',
+'Aspect'='°',
+'Slope'='°',
+'Date_of_recording' = 'dd-mm-yyyy',
+'Cover_total'='%',
+'Cover_tree_layer'='%',
+'Cover_shrub_layer'='%',
+'Cover_herb_layer'='%',
+'Cover_moss_layer'='%',
+'Cover_lichen_layer'='%',
+'Cover_algae_layer'='%',
+'Cover_litter_layer'='%',
+'Cover_bare_rocks'='%',
+'Cover_cryptogams'='%',
+'Cover_bare_soil'='%',
+'Height_trees_highest'='m',
+'Height_trees_lowest'='m',
+'Height_shrubs_highest'='m',
+'Height_shrubs_lowest'='m',
+'Height_herbs_average'='cm',
+'Height_herbs_lowest'='cm',
+'Height_herbs_highest' = 'cm')
+um <- data.frame(Variable=names(um), `Unit of Measurement`=um)
+
+```
 
 Create table 2 
 ```{r}
 table2 <- header.oa %>% 
   summarize_at(.vars=vars(!starts_with("PlotObservationID")),
             .funs = list(xxxNo.records=~sum(!is.na(.)),
-               xxxType.of.variable=~class(.), 
+               xxxType.of.variable=~ifelse(class(.)=="logical",
+                                           "binary",
+                                           ifelse(class(.) %in% c("character", "factor"), 
+                                                  "nominal",
+                                                  ifelse(class(.)=="Date",
+                                                         "date",
+                                                         "quantitative"))),
                xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
                                   paste(range(., na.rm=T), collapse=" - "),
                                   ifelse(is.factor(.), 
                                          paste(levels(.), collapse=", "),
                                          ifelse(is.logical(.),
-                                                paste(names(table(.)), "=", 
-                                                      table(.), collapse="; "),
+                                                paste(names(table(.)), "=",table(.), collapse="; "),
                                                 "")))))) %>% 
   gather(key="Variable") %>% 
   separate(Variable, into = c("Variable", "feature"), sep="_xxx") %>% 
   spread(key=feature, value = value) %>% 
   rename(`Range/Levels`=Levels) %>% 
   mutate(Variable=factor(Variable, levels=colnames(header.oa))) %>% 
-  arrange(Variable) 
+  arrange(Variable) %>% 
+  left_join(um, by="Variable") %>% 
+  mutate(Unit.of.Measurement=as.character(Unit.of.Measurement)) %>% 
+  replace_na(list(Unit.of.Measurement="")) %>% 
+  dplyr::select(Variable, `Range/Levels`, `Unit of Measurement`=Unit.of.Measurement, `Nr. Records`=No.records, `Type`=Type.of.variable)
 
 write_csv(table2, "_output/Table2_header.csv")
 ```
@@ -1571,30 +1624,40 @@ knitr::kable(table2,
 # Save Ouput
 ```{r}
 path <- "_sPlotOpenDB"
-save(DT2.oa, header.oa, metadata.oa, CWM.oa, bib.oa, sPlotOpen_citation, file = file.path(path, "_output/sPlotOpen.RData"))
+save(DT2.oa, header.oa, metadata.oa, CWM.oa, bib.oa, sPlotOpen_citation, file = file.path(path, "sPlotOpen.RData"))
 
 ## Export to csv files
 write_delim(DT2.oa, file = file.path(path, "sPlotOpen_DT.txt"), delim="\t")
 write_delim(header.oa, file = file.path(path, "sPlotOpen_header.txt"), delim="\t")
 write_delim(metadata.oa, file = file.path(path, "sPlotOpen_metadata.txt"), delim="\t")
 write_delim(CWM.oa, file = file.path(path, "sPlotOpen_CWM_CWV.txt"), delim="\t")
-df2bib(bib.oa %>% 
-         dplyr::select(-Fullref), file = file.path(path, "sPlotOpen_references.bib"))
-
+df2bib(bib.db %>% 
+         #bind db level and plot level references into a single bib file
+         bind_rows(bib.oa %>%
+                     dplyr::select(-Fullref)), 
+       file = file.path(path, "sPlotOpen_references.bib"))
 
 #export list of PlotObservationIDS
 write_delim(header.oa %>% dplyr::select(PlotObservationID), file = "_output/Plot_list.txt")
 ```
+
+
 ## Sink tables for Manubot
 ```{r}
 out.file <- "_output/91.ManubotTables.md"
 readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
-readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='Table 1'}\n", file = out.file, append=T)
+readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
 readr::write_lines("\n \n", file = out.file, append=T)
-readr::write_lines(kable(table1, format = "markdown"), file = out.file, append=T)
+kable1 <- kable(table1, format = "markdown")
+## fix header table 1
+kable1[2] <- "|:---------|:------------------------------------------------------------|-------:|-----------------:|:----------|"
+readr::write_lines(kable1, file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='Table 2'}\n", file = out.file, append=T)
-readr::write_lines(kable(table2, format = "markdown"), file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
+kable2 <- kable(table2, format = "markdown")
+## fix header table 2
+kable2[2] <- "|:-------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:------------|"
+readr::write_lines(kable2, file = out.file, append=T)
 ```
 
 ## Create list of coauthors
