@@ -1385,7 +1385,7 @@ CWM.oa <- CWM.oa %>%
 
 
 # Figures and Tables
-## Geographic distribution of plots
+## Figure 1 - Geographic distribution of plots
 
 Template of Global map
 ```{r, cache=T, results="hide", warning=F, message=F}
@@ -1471,7 +1471,7 @@ w3a +
 
 ```
 
-## Whittaker Biome Graph
+## Figure 2  Whittaker Biome Graph
 Get climatic data
 ```{r}
 load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
@@ -1492,7 +1492,7 @@ whittaker_base_plot() +
 ```
 
 
-## Summary tables
+## Table 1 - Database level information
 Import databases and create reference tags
 ```{r, message=F, warning=F}
 #Import BibTex
@@ -1513,14 +1513,14 @@ databases <- databases %>%
   mutate(tag=ifelse( (is.na(tag) & `GIVD ID` %in% unique(header.oa$GIVD_ID) & !is.na(Citation)), 
                      paste0("@", word(Citation, 1)), 
                      tag)) %>% 
-    dplyr::select(-DOI, -URL, -BIBTEXKEY)
+  dplyr::select(-DOI, -URL, -BIBTEXKEY)
   
 
 ```
 
 
 
-Table 1 - Database level information
+Create Table 1
 
 ```{r}
 table1 <- databases %>% 
@@ -1532,9 +1532,11 @@ table1 <- databases %>%
               group_by(GIVD_ID) %>% 
               summarize(contributed_plots=n(), .groups = 'drop'), 
             by=c("GIVD ID"="GIVD_ID")) %>% 
-  dplyr::select(`GIVD ID`,`DB_name GIVD`,  n_Plots, contributed_plots, Citation=tag) %>%  #Custodian, `Deputy custodian`,
   filter(!is.na(contributed_plots)) %>% 
-  replace_na(list(Citation=""))
+  replace_na(list(tag="",
+                  `Deputy custodian`="")) %>% 
+  dplyr::select(`GIVD ID`, `Dataset name`=`DB_name GIVD`,  Custodian, `Deputy custodian`, `Nr. OA plots` = contributed_plots, Ref=tag) 
+
 
 write_csv(table1, "_output/Table1_Databases.csv")
 ```
@@ -1548,7 +1550,7 @@ knitr::kable(table1%>%
 ```
 
 
-Table 2 - Metadata and environmental data included in header  
+## Table 2 - Metadata and environmental data included in header  
 Define unit of measurements for columns
 ```{r}
 um <- c('Latitude'='° (WGS84)',
@@ -1587,12 +1589,12 @@ table2 <- header.oa %>%
   summarize_at(.vars=vars(!starts_with("PlotObservationID")),
             .funs = list(xxxNo.records=~sum(!is.na(.)),
                xxxType.of.variable=~ifelse(class(.)=="logical",
-                                           "binary",
+                                           "b",
                                            ifelse(class(.) %in% c("character", "factor"), 
-                                                  "nominal",
+                                                  "n",
                                                   ifelse(class(.)=="Date",
-                                                         "date",
-                                                         "quantitative"))),
+                                                         "d",
+                                                         "q"))),
                xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
                                   paste(range(., na.rm=T), collapse=" - "),
                                   ifelse(is.factor(.), 
@@ -1650,18 +1652,18 @@ readr::write_lines("Table: List of databases contributing to the open access dat
 readr::write_lines("\n \n", file = out.file, append=T)
 kable1 <- kable(table1, format = "markdown")
 ## fix header table 1
-kable1[2] <- "|:---------|:------------------------------------------------------------|-------:|-----------------:|:----------|"
+kable1[2] <- "|:------------|:--------------------------------------------|:--------------------|:--------------------|--------:|:--------|"
 readr::write_lines(kable1, file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or boolean). Variable type can be c - character (i.e. text), f - factor (i.e. qualitative or ordinal variable), i - integer (e.g. binomial), n - numeric (i.e., double) or l - logical (i.e., boolean). {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary). Variable types can be n - nominal (i.e. qualitative variable), q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
 kable2 <- kable(table2, format = "markdown")
 ## fix header table 2
-kable2[2] <- "|:-------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:------------|"
+kable2[2] <- "|:---------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:-----|"
 readr::write_lines(kable2, file = out.file, append=T)
 ```
 
 ## Create list of coauthors
-Here, we create a preliminary list of coauthors, and format their affilitions to Manubot's standards.
+Here, we create a preliminary list of coauthors, and format their affiliations to Manubot's standards.
 ```{r echo = T, results = 'hide', message=F}
 library(stringr)
 allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
@@ -1674,6 +1676,15 @@ first <- allaffiliations %>%
   filter(Name %in% c("Francesco Maria Sabatini", "Jonathan Lenoir")) %>% 
   arrange(Name)
 ##third author still to code Tarek Habab
+third <- tibble(Name="Tarek Hattab",
+                           `E-Mail`="Tarek.Hattab@ifremer.fr",
+                            ORCID="0000-0002-1420-5758",
+                           `Department/Institute/Faculty`="MARBEC",
+                           `University/Institution`="University of Montpellier, CNRS, IFREMER and IRD",
+                           Town="Sète",
+                           Country="France", 
+                           Surname="Hattab")
+
 custodians <- unique(table1$Custodian)
 core <- allaffiliations %>% 
   filter(Name %in% (allroles %>%
@@ -1685,18 +1696,30 @@ last <- allaffiliations %>%
   filter(Name=="Helge Bruelheide")
 
 affiliations <- first %>% 
+  bind_rows(third) %>% 
   bind_rows(core) %>% 
   bind_rows(allaffiliations %>% 
     filter(Name %in% custodians) %>% 
     filter(!Name %in% core$Name) %>% 
     filter(!Name %in% first$Name) %>% 
     filter(!Name %in% last$Name) %>% 
-    arrange(Surname)) %>%  
+      bind_rows(tibble(Name="Guillermo Hinojos Mendoza",
+                           `E-Mail`="ghinojos@asessc.net",
+                           `Department/Institute/Faculty`="Pépinière d’Entreprises l’Espélidou, Parc d’Activités du Vinobre",
+                           `University/Institution`="ASES Ecological and Sustainable Services",
+                           Street="555 Chemin des Traverses, Lachapelle-sous-Aubenas", 
+                           `Postal code`="07200", 
+                           Town="Aubenas",
+                           Country="France", 
+                           Surname="Hinojos Mendoza")) %>% 
+    arrange(Surname, Sequence_affiliations)) %>%  
   bind_rows(last) %>% 
   dplyr:::select(name=Name, email=`E-Mail`, orcid=ORCID, everything(), -Surname, -`Second E-Mail`) %>% 
     replace_na(list(`Department/Institute/Faculty`="", Street="", `Postal code`="", Town="",   Country="" )) %>% 
   unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
-  mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", "))
+  mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", ")) %>% 
+  ## exclude authors who declined offer
+  filter(!name %in% c("Marten Winter", "Ching-Feng Li"))
 
 
 ## function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
@@ -1740,6 +1763,46 @@ lapply(affiliations %>%
          distinct() %>% 
          pull(name), create.yaml, affi.out)
 ```
+Create list of email addresses
+
+```{r}
+email <- affiliations %>% 
+  dplyr::select(name, email) %>% 
+  distinct() %>% 
+## add additional coauthors
+  bind_rows(data.frame(name="Tarek Hattab", email="tarek.Hattab@ifremer.fr")) %>%
+  bind_rows(data.frame(name="Elizabeth Kearsley", email="elizabeth.kearsley@ugent.be")) %>% 
+  mutate(export = paste0(name, " <", email, ">")) %>% 
+  dplyr::select(export)
+write_delim(email, file = "_output/Author_email.txt", delim="/t")
+
+## approve submission
+
+approve.checklist <- affiliations %>% 
+  distinct(name) %>% 
+  arrange(name) %>% 
+  mutate(name=paste0(" - [ ] ", name))
+write_delim(approve.checklist, file = "_output/Author_checklist.txt", delim="/t" )
+
+
+## Create email list for Opt-ins
+roles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
+email.optins <- roles %>% 
+  filter(`Still in sPlot`) %>% 
+  arrange(Surname) %>% 
+  left_join(allaffiliations, by="Name") %>% 
+  dplyr::select(Name, email=`E-Mail`) %>% 
+  distinct() %>% 
+  filter(!Name %in% affiliations$name) %>% 
+  mutate(export = paste0(Name, " <", email, ">")) %>% 
+  dplyr::select(export)
+
+write_delim(email.optins, file = "_output/Optins_email", delim="/t" )
+        
+
+
+```
+
 
 
 # SessionInfo
