@@ -1699,19 +1699,69 @@ affiliations <- first %>%
   bind_rows(third) %>% 
   bind_rows(core) %>% 
   bind_rows(allaffiliations %>% 
-    filter(Name %in% custodians) %>% 
-    filter(!Name %in% core$Name) %>% 
-    filter(!Name %in% first$Name) %>% 
-    filter(!Name %in% last$Name) %>% 
-      bind_rows(tibble(Name="Guillermo Hinojos Mendoza",
-                           `E-Mail`="ghinojos@asessc.net",
-                           `Department/Institute/Faculty`="Pépinière d’Entreprises l’Espélidou, Parc d’Activités du Vinobre",
-                           `University/Institution`="ASES Ecological and Sustainable Services",
-                           Street="555 Chemin des Traverses, Lachapelle-sous-Aubenas", 
-                           `Postal code`="07200", 
-                           Town="Aubenas",
-                           Country="France", 
-                           Surname="Hinojos Mendoza")) %>% 
+      filter(Name %in% custodians) %>%
+      filter(!Name %in% core$Name) %>%
+      filter(!Name %in% first$Name) %>%
+      filter(!Name %in% last$Name) %>% 
+      bind_rows(
+        tibble(
+          Name = "Guillermo Hinojos Mendoza",
+          `E-Mail` = "ghinojos@asessc.net",
+          `Department/Institute/Faculty` = "Pépinière d’Entreprises l’Espélidou, Parc d’Activités du Vinobre",
+          `University/Institution` = "ASES Ecological and Sustainable Services",
+          Street = "555 Chemin des Traverses, Lachapelle-sous-Aubenas",
+          `Postal code` = "07200",
+          Town = "Aubenas",
+          Country = "France",
+          Surname = "Hinojos Mendoza"
+        )
+      ) %>%
+      bind_rows(allaffiliations %>%
+          filter(Name == "Elizabeth Kearsley") %>%
+          mutate(
+            `Department/Institute/Faculty` =
+              replace(
+                `Department/Institute/Faculty`,
+                list = Name == "Elizabeth Kearsley",
+                values =
+                  "Department Environment, Computational and Applied Vegetation Ecology (UGent-CAVELab)"
+              )) %>% 
+          mutate(Surname = "Kearsley")) %>%
+      bind_rows(
+        tibble(
+          Name = "Wannes Hubau",
+          Sequence_affiliations = c(1, 2),
+          `E-Mail` = "wannes.hubau@ugent.be",
+          `Department/Institute/Faculty` = c(
+            "Department Environment, Laboratory of Wood Biology (UGent-WoodLab)",
+            "Service of Wood Biology"
+          ),
+          `University/Institution` = c("Ghent University", "Royal Museum for Central Africa"),
+          Street = c("Coupure Links 653", "Leuvensesteenweg 13"),
+          `Postal code` = c("9000", "3080"),
+          Town = c("Ghent", "Tervuren"),
+          Country = "Belgium",
+          Surname = "Hubau"
+        )
+      ) %>%
+      bind_rows(
+        tibble(
+          Name = "Marijn Bauters",
+          Sequence_affiliations = c(1, 2),
+          `E-Mail` = "marijn.bauters@ugent.be",
+          `Department/Institute/Faculty` =
+            c(
+              "Department Green chemistry and technology, Isotope Bioscience laboratory (UGent-ISOFYS)",
+              "Department Environment, Computational and Applied Vegetation Ecology (UGent-CAVELab)"
+            ),
+          `University/Institution` = "Ghent University",
+          Street = "Coupure Links 653",
+          `Postal code` = "9000",
+          Town = "Ghent",
+          Country = "Belgium",
+          Surname = "Bauters"
+        )
+      ) %>% 
     arrange(Surname, Sequence_affiliations)) %>%  
   bind_rows(last) %>% 
   dplyr:::select(name=Name, email=`E-Mail`, orcid=ORCID, everything(), -Surname, -`Second E-Mail`) %>% 
@@ -1719,7 +1769,7 @@ affiliations <- first %>%
   unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
   mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", ")) %>% 
   ## exclude authors who declined offer
-  filter(!name %in% c("Marten Winter", "Ching-Feng Li"))
+  filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen"))
 
 
 ## function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
@@ -1756,7 +1806,7 @@ create.yaml <- function(x, file.output){
 }
 
 affi.out <- "_output/affiliations_yaml.txt" #create empty affiliation file
-##populate yaml file with affiliaiton info
+##populate yaml file with affiliation info
 write_lines("", file = affi.out)
 lapply(affiliations %>% 
          dplyr::select(name) %>% 
