@@ -322,6 +322,24 @@ header.oa <- header.oa %>%
     Height_herbs_highest = "Maximum height herbs (cm)")
 ```
 
+The location of some RAINFOR plots is sensitive. I reduce the precision of the spatial coordinates
+```{r}
+header.oa <- header.oa %>% 
+  mutate(Latitude=ifelse(GIVD_ID=="00-00-001", 
+                         round(Latitude, 2), 
+                         Latitude)) %>% 
+  mutate(Longitude=ifelse(GIVD_ID=="00-00-001", 
+                         round(Longitude, 2), 
+                         Longitude)) %>% 
+  mutate(Location_uncertainty=ifelse(GIVD_ID=="00-00-001", 
+                         1000, 
+                         Location_uncertainty))
+           
+```
+
+
+
+
 ## Metadata
 Here, we try to organize this metadata information into a few meaningful fields. For each plot we provide information on:  
 
