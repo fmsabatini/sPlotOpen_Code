@@ -2,7 +2,10 @@
 title: "Project#02 - Build Dataset"
 author: "Francesco Maria Sabatini"
 date: "4/28/2020"
-output: html_document
+output:
+  html_document:
+    toc: true
+    theme: united
 ---
 
 <center>
@@ -322,7 +325,8 @@ header.oa <- header.oa %>%
     Height_herbs_highest = "Maximum height herbs (cm)")
 ```
 
-The location of some RAINFOR plots is sensitive. I reduce the precision of the spatial coordinates
+
+The location of some RAINFOR plots is sensitive. I reduce the precision of their spatial coordinates
 ```{r}
 header.oa <- header.oa %>% 
   mutate(Latitude=ifelse(GIVD_ID=="00-00-001", 
@@ -337,8 +341,71 @@ header.oa <- header.oa %>%
            
 ```
 
+### Formations
+For those plots being classified based on the EUNIS codes, we used a cross-link table to use EUNIS to  assign vegetation types and naturalness, but only when these columns are empty. 
+```{r}
+eunis.key <- xlsx::read.xlsx("/data/sPlot/users/Francesco/sPlot3/_input/EUNIS_WFT.xlsx", 
+                       sheetIndex = "Sheet1", endRow = 246) %>% 
+  dplyr::select(EUNIS_code, NATURALNESS:SPARSE_VEG) %>% 
+  mutate(EUNIS_code=as.character(EUNIS_code)) %>% 
+  rename(ESY=EUNIS_code, 
+         Naturalness=NATURALNESS, 
+         Forest=FOREST,
+         Shrubland=SCRUBLAND,
+         Grassland=GRASSLAND,
+         Wetland=WETLAND,
+         Sparse_vegetation=SPARSE_VEG)#,
+
+header.oa <- header.oa %>% # header.backup %>% 
+  mutate(ESY=as.character(ESY)) %>% 
+  #mutate(ESY=ifelse(ESY=="?", NA, ESY)) %>% 
+  # Systematically assign some databases to forest
+  mutate(Forest=ifelse(Dataset %in% 
+                         c("Turkey Oak_Forest Database", 
+                           "Turkey Forest Database", 
+                           "Chile_forest", "Ethiopia"), 
+                       T, Forest)) %>% 
+  #fill up with F those rows where at least one column on formation is assigned
+  rowwise() %>% 
+  mutate(Any=any(Forest, Shrubland, Grassland, Wetland, Sparse_vegetation)) %>% 
+  mutate(Forest=ifelse( (is.na(Forest) & Any), F, Forest))  %>%
+  mutate(Shrubland=ifelse( (is.na(Shrubland) & Any), F, Shrubland))  %>% 
+  mutate(Grassland=ifelse( (is.na(Grassland) & Any), F, Grassland))  %>% 
+  mutate(Wetland=ifelse( (is.na(Wetland) & Any), F, Wetland))  %>% 
+  mutate(Sparse_vegetation=ifelse( (is.na(Sparse_vegetation) & Any), F, Sparse_vegetation))  %>%
+  ungroup() %>% 
+  dplyr::select(-Any) %>%
+  ##join and coalesce with eunis.key
+  left_join(eunis.key %>% 
+              distinct(), by = "ESY") %>% 
+    mutate(
+        Forest = dplyr:::coalesce(Forest.x, Forest.y), 
+        Shrubland = coalesce(Shrubland.x, Shrubland.y),
+        Grassland = coalesce(Grassland.x, Grassland.y),
+        Wetland = coalesce(Wetland.x, Wetland.y),
+        Sparse_vegetation = coalesce(Sparse_vegetation.x, Sparse_vegetation.y),
+        Naturalness = coalesce(Naturalness.x, Naturalness.y)
+    ) %>% 
+  dplyr::select(-ends_with(".x"), -ends_with(".y")) %>% 
+  #transform naturalness to ordered factor
+  mutate(Naturalness=factor(Naturalness, 
+                          levels=c(1,2,3), 
+                          labels=c("Natural", "Semi-natural", "Anthropogenic"), 
+                          ordered = T)) %>%  
+  relocate(Forest:Naturalness, .after=ESY)
+
+```
+
+### Show Output
 
 
+```{r, echo=F}
+knitr::kable(header.oa %>%
+               sample_n(20),
+             caption="Example of header.oa [20 randomly selected plots shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
 
 ## Metadata
 Here, we try to organize this metadata information into a few meaningful fields. For each plot we provide information on:  
@@ -706,13 +773,13 @@ metadata.oa <- plotinfo.raw %>%
 knitr::kable(metadata.oa %>%
                sample_n(20) %>% 
                arrange(PlotObservationID),
-             caption="Example of plot lvel info [20 randomly selected plots shown]") %>%
+             caption="Example of plot level info [20 randomly selected plots shown]") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
 The vast majority of plots `r metadata.oa %>% filter_at(.vars = vars(Releve_author:Remarks), .vars_predicate = any_vars(!is.na(.))) %>% nrow()` out of `r nrow(metadata.oa)` have at least one entry among the selected plot level info.  
 
-### Function to ceate reference list
+### Function to create reference list
 Create function to create reference list, based on plot selection. Ideally the user will be able to conveniently create a citation report for the selection of plots he\\she is planning to use.
 ```{r}
 sPlotOpen_citation <- function(IDs, level=c("plot", "database"), out.file){ 
@@ -956,14 +1023,6 @@ DT2.oa <- DT2.oa %>%
                 Taxon_group=Taxon.group, Original_abundance=Abundance, Abundance_scale=Ab_scale, Relative_cover=Relative.cover)
 ```
 
-
-```{r, echo=F}
-knitr::kable(DT2.oa %>%
-               filter(PlotObservationID %in% sample(header.oa$PlotObservationID, 3)),
-             caption="Example of DT2.oa [3 randomly selected plots shown]") %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
-                  full_width = F, position = "center")
-```
 ### Update individual datasets
 There are two datasets whose species names need to be updated before releasing OA.
 
@@ -1324,7 +1383,15 @@ DT2.oa <- DT2.oa %>%
   dplyr::select(-Taxon_group)
 ```
 
+### Show Output
 
+```{r, echo=F}
+knitr::kable(DT2.oa %>%
+               filter(PlotObservationID %in% sample(header.oa$PlotObservationID, 3)),
+             caption="Example of DT2.oa [3 randomly selected plots shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
 
 
 ## CWM data
@@ -1604,22 +1671,27 @@ um <- data.frame(Variable=names(um), `Unit of Measurement`=um)
 Create table 2 
 ```{r}
 table2 <- header.oa %>% 
-  summarize_at(.vars=vars(!starts_with("PlotObservationID")),
-            .funs = list(xxxNo.records=~sum(!is.na(.)),
-               xxxType.of.variable=~ifelse(class(.)=="logical",
-                                           "b",
-                                           ifelse(class(.) %in% c("character", "factor"), 
-                                                  "n",
-                                                  ifelse(class(.)=="Date",
-                                                         "d",
-                                                         "q"))),
-               xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
-                                  paste(range(., na.rm=T), collapse=" - "),
-                                  ifelse(is.factor(.), 
-                                         paste(levels(.), collapse=", "),
-                                         ifelse(is.logical(.),
-                                                paste(names(table(.)), "=",table(.), collapse="; "),
-                                                "")))))) %>% 
+  dplyr::summarize_at(.vars=vars(!starts_with("PlotObservationID")),
+               .funs = list(xxxNo.records=~sum(!is.na(.)),
+                            xxxType.of.variable=~ifelse("logical" %in% class(.), "b",
+                                           ifelse("ordered" %in% class(.), 
+                                                 "o", 
+                                                  ifelse(any(class(.) %in% c("character", "factor")), 
+                                                         "n",
+                                                         ifelse(class(.)=="Date",
+                                                                "d",
+                                                                "q")))),
+                            xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
+                                               paste(range(., na.rm=T), collapse=" - "),
+                                               ifelse(is.ordered(.), 
+                                                      paste(paste(1:nlevels(.), 
+                                                                  levels(.), sep=" = "), collapse=", "),
+                                                      ifelse(is.factor(.), 
+                                                              paste(levels(.), collapse=", "),
+                                                              ifelse(is.logical(.),
+                                                                     paste(names(table(.)), "=",table(.),
+                                                                           collapse="; "),
+                                                                     ""))))))) %>%
   gather(key="Variable") %>% 
   separate(Variable, into = c("Variable", "feature"), sep="_xxx") %>% 
   spread(key=feature, value = value) %>% 
@@ -1629,7 +1701,9 @@ table2 <- header.oa %>%
   left_join(um, by="Variable") %>% 
   mutate(Unit.of.Measurement=as.character(Unit.of.Measurement)) %>% 
   replace_na(list(Unit.of.Measurement="")) %>% 
-  dplyr::select(Variable, `Range/Levels`, `Unit of Measurement`=Unit.of.Measurement, `Nr. Records`=No.records, `Type`=Type.of.variable)
+  dplyr::select(Variable, `Range/Levels`, 
+                `Unit of Measurement`=Unit.of.Measurement, 
+                `Nr. Records`=No.records, `Type`=Type.of.variable)
 
 write_csv(table2, "_output/Table2_header.csv")
 ```
@@ -1673,7 +1747,7 @@ kable1 <- kable(table1, format = "markdown")
 kable1[2] <- "|:------------|:--------------------------------------------|:--------------------|:--------------------|--------:|:--------|"
 readr::write_lines(kable1, file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary). Variable types can be n - nominal (i.e. qualitative variable), q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary). Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
 kable2 <- kable(table2, format = "markdown")
 ## fix header table 2
 kable2[2] <- "|:---------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:-----|"
