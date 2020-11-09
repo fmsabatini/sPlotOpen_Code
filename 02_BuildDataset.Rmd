@@ -1733,8 +1733,8 @@ first <- allaffiliations %>%
 third <- tibble(Name="Tarek Hattab",
                            `E-Mail`="Tarek.Hattab@ifremer.fr",
                             ORCID="0000-0002-1420-5758",
-                           `Department/Institute/Faculty`="MARBEC",
-                           `University/Institution`="University of Montpellier, CNRS, IFREMER and IRD",
+                           `Department/Institute/Faculty`="CNRS, IFREMER and IRD",
+                           `University/Institution`="MARBEC, University of Montpellier",
                            Town="Sète",
                            Country="France", 
                            Surname="Hattab")
@@ -1748,7 +1748,32 @@ core <- allaffiliations %>%
   arrange(Surname) 
 last <- allaffiliations %>% 
   filter(Name=="Helge Bruelheide")
+```
+Import affiliation info for additioal opt-in coauthors
+(Update 09 November 2020)
+```{r}
+optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form responses 1.csv") %>% 
+  filter(X3=="I read and understand sPlot rules and would like to opt-in to this project") %>% 
+  dplyr::select(Surname, Name, `Email address`, Affiliation, Address) %>% 
+  #join affiliations from our records
+  left_join(allaffiliations, by="Name") %>% 
+  #replace affiliations with opt-in input if record is not in archive
+  mutate(`University/Institution`=ifelse(is.na(`E-Mail`), Affiliation, `University/Institution`)) %>% 
+  mutate(Street=ifelse(is.na(`E-Mail`), Address, Street)) %>% 
+  mutate(Surname=coalesce(Surname.y, Surname.x)) %>% 
+  dplyr::select(-Surname.x, -Surname.y) %>% 
+  mutate(`E-Mail`=ifelse(is.na(`E-Mail`), `Email address`, `E-Mail`)) %>% 
+  mutate(Sequence_affiliations=ifelse(is.na(Sequence_affiliations), 1, Sequence_affiliations)) %>% 
+  dplyr::select(Name, Surname, Sequence_affiliations:Country) %>% 
+  mutate_if(.predicate = ~is.character(.), 
+            .funs = list(~gsub(pattern = ",$", replacement = "", x = {.}))) %>% 
+  filter(!Name %in% c(first, third, custodians, core))
 
+```
+
+
+
+```{r echo = T, results = 'hide', message=F}
 affiliations <- first %>% 
   bind_rows(third) %>% 
   bind_rows(core) %>% 
@@ -1821,6 +1846,8 @@ affiliations <- first %>%
       bind_rows(allaffiliations %>% 
                   filter(Name=="Anita Smyth")) %>% 
   ## Add possible additional coauthors here
+    #bind_rows(optins) %>% 
+  ## Joop Schaminée is not custodian anymore. Exclude?
   ###
   #####
   arrange(Surname, Sequence_affiliations)) %>%  
@@ -1832,8 +1859,7 @@ affiliations <- first %>%
   ## exclude authors who declined offer
   filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen"))
 
-
-## function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
+#Function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
 create.yaml <- function(x, file.output){
   tmp <- affiliations %>%
     mutate(github="") %>% 
@@ -1862,7 +1888,9 @@ create.yaml <- function(x, file.output){
     mutate(newtag=str_remove(newtag, pattern = '"')) %>% 
     mutate(newtag=str_remove(newtag, pattern = '"')) %>% 
     mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", ")) %>% 
-    mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", "))
+    mutate(newtag=str_replace_all(string = newtag, pattern=", , ", replacement = ", ")) %>% 
+    mutate(newtag=gsub(pattern=", $", replacement = "", x=newtag))
+    
     write_lines(tmp[[1]], file = file.output, append=T) 
 }
 
@@ -1888,12 +1916,19 @@ email <- affiliations %>%
 write_delim(email, file = "_output/Author_email.txt", delim="/t")
 
 ## approve submission
-
 approve.checklist <- affiliations %>% 
   distinct(name) %>% 
   arrange(name) %>% 
   mutate(name=paste0(" - [ ] ", name))
 write_delim(approve.checklist, file = "_output/Author_checklist.txt", delim="/t" )
+## second batch
+approve.checklist <- optins %>% 
+  #filter(Name %in% affiliations$name) %>% 
+  distinct(Name) %>% 
+  arrange(Name) %>% 
+  mutate(Name=paste0(" - [ ] ", Name))
+write_delim(approve.checklist, file = "_output/Author_checklist_batch2.txt", delim="/t" )
+
 
 
 ## Create email list for Opt-ins
