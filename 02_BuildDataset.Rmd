@@ -1844,9 +1844,12 @@ affiliations <- first %>%
         )
       ) %>% 
       bind_rows(allaffiliations %>% 
-                  filter(Name=="Anita Smyth")) %>% 
+                  filter(Name=="Anita Smyth")) %>%
+        bind_rows(allaffiliations %>% 
+                  filter(Name=="Alireza Naqinezhad")) %>% 
   ## Add possible additional coauthors here
-    #bind_rows(optins) %>% 
+    bind_rows(optins) %>% 
+    
   ## Joop Schaminée is not custodian anymore. Exclude?
   ###
   #####
@@ -1857,12 +1860,13 @@ affiliations <- first %>%
   unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
   mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", ")) %>% 
   ## exclude authors who declined offer
-  filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen"))
+  filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen")) %>% 
+  mutate(github=ifelse(name=="Miguel Alvarez", "kamapu", ""))
 
 #Function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
 create.yaml <- function(x, file.output){
   tmp <- affiliations %>%
-    mutate(github="") %>% 
+#    mutate(github="") %>% 
     filter(name==x) %>% 
     pivot_longer(!Sequence_affiliations, names_to = "tag") %>%
     arrange(Sequence_affiliations) %>% 
