@@ -70,7 +70,8 @@ answers <- answers %>%
   # but depends on conditions others than the selection of plot.
   mutate(`Yes/Conditional/No`=replace(`Yes/Conditional/No`, 
                                     list=GIVD.ID %in% c("NA-US-014","AF-00-009", 
-                                                        "AF-00-006", "00-00-003"),  
+                                                        "AF-00-006", "00-00-003", 
+                                                        "00-RU-001"),  
                                     values="Yes"))
 
 head(answers)
@@ -698,6 +699,41 @@ plotinfo.number <- plotinfo.raw %>%
   mutate(Original_nr_in_database=coalesce(Original_nr_in_database,ORIG_ID, ORIG_ID_1)) %>% 
   dplyr::select(-Country, -ORIG_ID, -ORIG_ID_1, -ORIG_REL_N, Original_plotID=PLOTID, Original_subplotID=SUBPLOTID)
 ```
+
+### Correct individual data sets
+Replace plot-level original IDs for NA-US-002 – VegBank  
+
+```{r}
+# Import new IDs to replace
+update.vegbank <- read_csv("_data/Update_VegBank/plot_env.csv", 
+                           col_types = cols(
+                             .default = col_character(),
+                             observation_id = col_double(),
+                             obsstartdate_vb = col_date(format = ""),
+                             obsenddate_vb = col_date(format = ""),
+                             confidentialitystatus = col_double(),
+                             latitude = col_double(),
+                             longitude = col_double(),
+                             locationaccuracy = col_double()
+                           )) %>% 
+  dplyr::select(observation_id, authorplotcode_vb) %>% 
+  mutate(observation_id=as.character(observation_id))
+
+
+# select plots from VegBank
+vb.plots <- header.oa %>% 
+  filter(GIVD_ID=="NA-US-002") %>% 
+  pull(PlotObservationID)
+# attach and replace new codes in field Original_nr_in_database
+plotinfo.number <- plotinfo.number %>% 
+  left_join(update.vegbank, by=c("Original_nr_in_database"="observation_id")) %>% 
+  mutate(Original_nr_in_database=ifelse(PlotObservationID %in% vb.plots, 
+                                        authorplotcode_vb, 
+                                        Original_nr_in_database)) %>% 
+  dplyr::select(-authorplotcode_vb)
+```
+
+
 
 ### Recompile metadata
 Recompile and explore plot-level info
@@ -1438,17 +1474,22 @@ Figures and tables for the manuscript in the [sPlotOpen_Manuscript](https://fmsa
 Template of Global map
 ```{r, cache=T, results="hide", warning=F, message=F}
 #download data from rnaturalearth package
-countries <- ne_countries(returnclass = "sf") %>% 
+countries <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_admin_0_countries.shp") %>% 
+  st_as_sf() %>% 
   st_transform(crs = "+proj=eck4") %>% 
   st_geometry()
-graticules <- ne_download(type = "graticules_15", category = "physical",
-                          returnclass = "sf") %>% 
+graticules <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_graticules_15.shp") %>% 
+  st_as_sf() %>% 
   st_transform(crs = "+proj=eck4") %>% 
   st_geometry()
-bb <- ne_download(type = "wgs84_bounding_box", category = "physical",
-                  returnclass = "sf") %>% 
+
+bb <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_wgs84_bounding_box.shp") %>% 
+    st_as_sf() %>% 
+  #ne_download(type = "wgs84_bounding_box", category = "physical",
+      #            returnclass = "sf") %>% 
   st_transform(crs = "+proj=eck4") %>% 
   st_geometry()
+
 
 # create ggplot template of the world map
 w3a <- ggplot() +
@@ -1845,11 +1886,15 @@ affiliations <- first %>%
       ) %>% 
       bind_rows(allaffiliations %>% 
                   filter(Name=="Anita Smyth")) %>%
-        bind_rows(allaffiliations %>% 
+      bind_rows(allaffiliations %>% 
                   filter(Name=="Alireza Naqinezhad")) %>% 
   ## Add possible additional coauthors here
+      bind_rows(allaffiliations %>% 
+                  filter(Name=="Sylvia Haider")) %>% 
+      bind_rows(allaffiliations %>% 
+                  filter(Name=="Pavel Shirokikh")) %>% 
+  ##
     bind_rows(optins) %>% 
-    
   ## Joop Schaminée is not custodian anymore. Exclude?
   ###
   #####
