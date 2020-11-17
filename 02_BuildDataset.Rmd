@@ -1759,6 +1759,27 @@ readr::write_lines(kable2, file = out.file, append=T)
 
 ## Create list of coauthors
 Here, we create a preliminary list of coauthors, and format their affiliations to Manubot's standards.
+```{r}
+#Ancillary function to extract name initials
+# credits: https://codereview.stackexchange.com/questions/150624/extracting-initials-with-r
+initials <- function(full.name) {
+  # Returns initials of a full name
+  # Input will contain only letters (uppercase and/or lowercase) plus 
+  # single spaces between words. Folks like Joseph Gordon-Levitt, 
+  # Conan O’Brien, and David J. Malan won’t be using your program. (If only!)
+  if (nchar(full.name) == 0) {
+    stop ("Valid name please")
+  }
+  isspace  <- integer(0)
+  fn.split <- unlist(strsplit(full.name, fixed = TRUE, split = ""))
+  isspace  <- which(fn.split == " ")
+  init     <- toupper(fn.split[c(1, (isspace+1))])
+  paste(init, collapse = "")
+}
+```
+
+
+
 ```{r echo = T, results = 'hide', message=F}
 library(stringr)
 allroles <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/roles.csv")
@@ -1906,7 +1927,27 @@ affiliations <- first %>%
   mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", ")) %>% 
   ## exclude authors who declined offer
   filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen")) %>% 
-  mutate(github=ifelse(name=="Miguel Alvarez", "kamapu", ""))
+  ### Add Github accounts, if required
+  mutate(github="") %>% 
+  mutate(github=ifelse(name=="Miguel Alvarez", "kamapu", github)) %>% 
+  mutate(github=ifelse(name=="Francesco Maria Sabatini", "fmsabatini", github)) %>% 
+  mutate(github=ifelse(name=="Jonathan Lenoir", "lenjon", github)) %>% 
+  mutate(github=ifelse(name=="Helge Bruelheide", "Bruelheide", github)) %>% 
+  ### Add Twitter account, if required
+  mutate(twitter=NA) %>% 
+  mutate(twitter=ifelse(name=="Francesco Maria Sabatini", "sPlot_iDiv", twitter)) %>% 
+  mutate(twitter=ifelse(name=="Jonathan Lenoir", "EkoLogIt", twitter)) %>% 
+  mutate(twitter=ifelse(name=="Helge Bruelheide", "HelgeBruelheide", twitter)) %>% 
+  ### Add correspondence
+  mutate(correspondence=ifelse(name=="Francesco Maria Sabatini", "true", NA)) %>% 
+  ### Add equal contribution
+  mutate(symbol_str=ifelse(name %in% c("Francesco Maria Sabatini", "Jonathan Lenoir"), 
+                           "†", NA)) %>% 
+  ### Add initials
+  rowwise() %>% 
+  mutate(initials=initials(name)) %>% 
+  ungroup()
+           
 
 #Function to format name, orcid, email and affiliation info into the metadata.yaml standard for manubot
 create.yaml <- function(x, file.output){
@@ -1916,7 +1957,9 @@ create.yaml <- function(x, file.output){
     pivot_longer(!Sequence_affiliations, names_to = "tag") %>%
     arrange(Sequence_affiliations) %>% 
     dplyr::select(-Sequence_affiliations) %>% 
-    mutate(tag=factor(tag, levels=c("github", "name", "orcid", "email", "affiliations"))) %>% 
+    mutate(tag=factor(tag, levels=c("github", "name","initials", 
+                                    "orcid", "twitter", "email", 
+                                    "affiliations","correspondence", "symbol_str"))) %>% 
     distinct() %>% 
     bind_rows(data.frame(tag="affiliations", 
                          value=paste0("\n      - ", 
@@ -1945,12 +1988,47 @@ create.yaml <- function(x, file.output){
 
 affi.out <- "_output/affiliations_yaml.txt" #create empty affiliation file
 ##populate yaml file with affiliation info
-write_lines("", file = affi.out)
+write_lines(c(
+  "---",
+  'title: "sPlot open - An environmentally-balanced, open-access, global dataset of vegetation plots"',
+  'keywords:',
+  '  - vegetation',
+  '  - database',
+  '  - plants',
+  '  - biodiversity',
+  '  - functional traits',
+  '  - big-data',
+  '  - manubot',
+  'lang: en-US'), file = affi.out)
 lapply(affiliations %>% 
          dplyr::select(name) %>% 
          distinct() %>% 
          pull(name), create.yaml, affi.out)
 ```
+
+```{r}
+---
+title: "sPlot open - An environmentally-balanced, open-access, global dataset of vegetation plots"
+keywords:
+  - markdown
+  - publishing
+  - manubot
+lang: en-US
+authors:
+  - github: fmsabatini
+    initials: FMS
+    twitter: sPlot_iDiv
+    correspondence: true
+    symbol_str: "†"
+  - github: lenjon
+    name: Jonathan Lenoir
+    initials: JN
+    symbol_str: "†"
+
+```
+
+
+
 Create list of email addresses
 
 ```{r}
