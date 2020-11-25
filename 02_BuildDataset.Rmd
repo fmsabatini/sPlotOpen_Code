@@ -45,6 +45,8 @@ library(rnaturalearth)
 library(dggridR)
 # library(rgeos)
 
+library(Taxonstand)
+
 #save temporary files
 write("TMPDIR = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('TMPDIR'), '.Renviron'))
 write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_USER'), '.Renviron'))
@@ -250,13 +252,15 @@ header.oa <- header.oa %>%
             ~ifelse(.=="Y", T, F)) %>% 
   mutate(`Date of recording`=as.Date(`Date of recording`, "%d-%m-%Y") ) %>%
   mutate(CONTINENT=factor(CONTINENT, exclude = " ")) %>% 
-  mutate(`Plants recorded`=factor(`Plants recorded`, exclude = "#N/A")) %>% 
+  mutate(`Plants recorded`=forcats::fct_explicit_na(f = `Plants recorded`, "Not specified")) %>% 
   mutate(`Plants recorded`=forcats::fct_recode(`Plants recorded`, 
+                                      "Not specified" = "#N/A",
                                       "All vascular plants"="Complete vegetation",
                                       "All vascular plants"="all vascular plants", 
                                       "All vascular plants"="complete", 
                                       "All vascular plants"="Complete vegetation (including non-terricolous tax",
                                       "All vascular plants"="Vascular plants",
+                                      "All vascular plants"="All vascular plants and dominant cryptogams",
                                       "All woody plants"="Woody plants",
                                       "All woody plants"="All woody species",
                                       "Woody plants >= 10 cm dbh"= "trees>=10cm dbh",
@@ -267,11 +271,30 @@ header.oa <- header.oa %>%
                                       "Only dominant species"="Dominant vascular plants",
                                       "Woody plants >= 1 m height"="trees and shrubs >1 m height"
                                       )) %>% 
+  #reorder levels of `Plants recorded`
+  mutate(`Plants recorded`=factor(`Plants recorded`, 
+                                  levels=c('All vascular plants', 
+                                           
+                                           'All trees & dominant understory', 
+                                           'Dominant trees', 
+                                           'Only dominant species', 
+                                           'Dominant woody plants >= 2.5 cm dbh', 
+                                           
+                                           'All woody plants', 
+                                           'Woody plants >= 1 cm dbh', 
+                                           'Woody plants >= 2.5 cm dbh', 
+                                           'Woody plants >= 5 cm dbh', 
+                                           'Woody plants >= 10 cm dbh', 
+                                           'Woody plants >= 20 cm dbh', 
+                                           'Woody plants >= 1 m height', 
+                                           
+                                           'Not specified'))) %>% 
   ##correct mistakes
   mutate(`Altitude (m)`=ifelse(`Altitude (m)`< -100, NA, `Altitude (m)`)) %>% 
   #plots from Veg_bank seem to have a mix of feet and meter in Altitude
   mutate(`Altitude (m)`=ifelse(`GIVD ID`=="NA-US-002", NA, `Altitude (m)`)) %>%  
   mutate(`Slope (°)`=ifelse(`Slope (°)`<0, NA, `Slope (°)`)) %>%  
+  mutate(`Slope (°)`=ifelse(`Slope (°)`>90, NA, `Slope (°)`)) %>%  
   mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
             ~ifelse(.>=10|.<0, NA, .)) %>% 
   mutate(`Relevé area (m²)`=ifelse(`Relevé area (m²)`<0, NA, `Relevé area (m²)`)) %>% 
@@ -293,7 +316,7 @@ header.oa <- header.oa %>%
     Location_uncertainty = "Location uncertainty (m)", #POINT_X, POINT_Y,
     #sampling design
     Releve_area = "Relevé area (m²)", 
-    Herbs_identified = "Herbs identified (y/n)", #Mosses_identified="Mosses identified (y/n)", "Lichens identified (y/n)", 
+    #Herbs_identified = "Herbs identified (y/n)", #Mosses_identified="Mosses identified (y/n)", "Lichens identified (y/n)", 
     Plant_recorded = "Plants recorded",
     #topography
     Elevation = "Altitude (m)", 
@@ -394,12 +417,87 @@ header.oa <- header.oa %>% # header.backup %>%
   dplyr::select(-ends_with(".x"), -ends_with(".y")) %>% 
   #transform naturalness to ordered factor
   mutate(Naturalness=factor(Naturalness, 
-                          levels=c(1,2,3), 
-                          labels=c("Natural", "Semi-natural", "Anthropogenic"), 
+                          levels=c(1,2), 
+                          labels=c("Natural", "Semi-natural"), 
                           ordered = T)) %>%  
-  relocate(Forest:Naturalness, .after=ESY)
+  relocate(Forest:Sparse_vegetation, .after=ESY) 
 
 ```
+### Complete missing values, when possible
+There are 302 entries without continent info
+```{r}
+header.oa <- header.oa %>% 
+  mutate(Continent=as.character(Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Bulgaria", "Denmark", "Greece", "Iceland", 
+                                                            "Italy", "Norway", "Svalbard and Jan Mayen Is", 
+                                                            "Sweden", "United Kingdom", "France"), 
+                          "Europe", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country=="Australia", 
+                          "Australia", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Chile", "Colombia"), 
+                          "South America", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("United States", "Canada", "Greenland"), 
+                          "North America", Continent)) %>% 
+  # correct a couple of mistakes
+  mutate(Continent=ifelse(Continent=="Australia", "Oceania", Continent)) %>%
+  mutate(Continent=ifelse(Country=="Papua New Guinea", "Oceania", Continent)) %>% 
+  mutate(Continent=as.factor(Continent)) %>% 
+  # tranform Forest:Sparse veg to T/F
+  mutate_at(.vars=vars(Forest:Sparse_vegetation),
+            .funs = ~as.logical(.) )
+```
+
+Fix `is_forest` and `is_nonforest` based on vegetation type. Make the fields consistent with each other.
+```{r}
+header.oa <- header.oa %>% 
+  # If a plot has Forest ==1 and all other veg types==0, force is_forest to TRUE and is_nonforest to F
+  mutate(is_forest=replace(is_forest,
+                           list=(Forest==T & Grassland==F & Shrubland==F & Wetland==F & Sparse_vegetation==F), 
+                           values=T)) %>% 
+  mutate(is_nonforest=replace(is_nonforest,
+                           list=(Forest==T & Grassland==F & Shrubland==F & Wetland==F & Sparse_vegetation==F), 
+                           values=F)) %>% 
+  # If a plot has Forest ==0 and any other veg types==1, force is_forest to F and is_nonforest to T
+  mutate(is_forest=replace(is_forest,
+                           list=(Forest==F & (Grassland==T | Shrubland==T | Wetland==T | Sparse_vegetation==T)), 
+                           values=F)) %>% 
+  mutate(is_nonforest=replace(is_nonforest,
+                           list=(Forest==F & (Grassland==T | Shrubland==T | Wetland==T | Sparse_vegetation==T)), 
+                           values=T)) %>% 
+  ## fill up NAs when either is_forest or is_nonforest is not NA
+  ## note that if a plot is marked as is_forest == T, the plot is assigned to is_nonforest =F
+  ## BUT is the plots is marked as is_nonforest = T, the opposite is not done (conservative choice)
+  mutate(is_forest=replace(is_forest,
+                           list=is.na(is_forest) & is_nonforest==T, 
+                           values=F)) %>% 
+  mutate(is_nonforest=replace(is_nonforest,
+                         list=is.na(is_nonforest) & is_forest==F, 
+                         values=T)) %>% 
+  ## assign replace double FALSE to NA
+  mutate(is_forest=replace(is_forest, 
+                           list= ((is.na(is_forest) | is_forest==F) & (is.na(is_nonforest) | is_nonforest==F)), 
+                           values=NA)) %>% 
+  mutate(is_nonforest=replace(is_nonforest, 
+                           list= ((is.na(is_forest) | is_forest==F) & (is.na(is_nonforest) | is_nonforest==F)), 
+                           values=NA))
+
+#double check
+header.oa %>% 
+  group_by(is_forest, is_nonforest) %>% 
+  summarize(n=n())
+  
+```
+
+The field `is_nonforest` is now redundant. Drop it.
+```{r}
+header.oa <- header.oa %>% 
+  dplyr::select(-is_nonforest)
+```
+
+
+
+
+
 
 ### Show Output
 
@@ -1113,7 +1211,6 @@ congo.new %>%
   pull(Species) %>% 
   unique()
 
- library(Taxonstand)
  checked <- TPL(tocheck)
  checked2 <- data.frame(old_species=tocheck) %>% 
    bind_cols(checked %>% 
@@ -1207,12 +1304,14 @@ angola.new <- angola.new %>%
 # 
 ```
 
+
 Out of the `r length(unique(angola.new$Species))` species contained in the Angola update, `r angola.new %>% distinct(Species, .keep_all=T) %>% filter(!is.na(New_species)) %>% nrow()` matched an entry in the backbone, while the remaining `r angola.new %>% distinct(Species, .keep_all=T) %>% filter(is.na(New_species)) %>% nrow()` returned `NA`. 
 
 ```{r, eval=F}
 ### get all unmatched species and run through TPL
 tocheck <- angola.new %>%
   filter(is.na(New_species)) %>%
+  filter(!grepl(pattern = "[0-9]+", x = Species)) %>% # delete all entries with a code (not yet identified)
   pull(Species) %>%
   unique()
 library(Taxonstand)
@@ -1225,10 +1324,8 @@ load(file = "_data/Update_Angola/Species_Checked_TPL.RData")
 
 New `r checked %>% filter(Plant.Name.Index==T) %>% nrow()` matches found.
 ```{r}
-
-
 checked2 <- checked %>%
-  filter(Plant.Name.Index==T) %>% 
+  filter(Plant.Name.Index==T | (Plant.Name.Index==F & Taxonomic.status!="")) %>% 
   dplyr::select(Taxon, New.Genus, New.Species) %>% 
   replace_na(list(New.Genus = "", New.Species = "")) %>%
   unite(New.Genus, New.Species, col = new_species, sep = " ") 
@@ -1236,7 +1333,7 @@ checked2 <- checked %>%
 angola.new <- angola.new %>% 
   as_tibble() %>% 
   left_join(checked2, by=c("Species"="Taxon")) %>% 
-  mutate(New_species=coalesce(New_species,new_species)) %>% 
+  mutate(New_species=coalesce(New_species,new_species)) %>%
   dplyr::select(-new_species)
 ```
 
@@ -1310,7 +1407,7 @@ angola.new <- angola.new %>%
 angola.new <- angola.new %>% 
   filter(!grepl(pattern="Moos|moos", x=Species))
 ```
-Little can be done with the remaining `r angola.new %>% filter(is.na(New_species)) %>% distinct(New_species) %>% nrow()` species.
+Little can be done with the remaining `r angola.new %>% filter(is.na(New_species)) %>% distinct(Species) %>% nrow()` species. These species occur in `r angola.new %>% filter(is.na(New_species)) %>% nrow()` out of `r angola.new %>% nrow()` records.
 
 Format `angola.new` to match `DT2.oa`
 ```{r, warning=F}
@@ -1350,8 +1447,6 @@ angola.out <- angola.new %>%
 plotsel <- sample(unique(angola.out$PlotObservationID), 1)
 DT2.oa %>% filter(PlotObservationID==plotsel) %>% print(n=25)
 angola.out %>% filter(PlotObservationID==plotsel) %>% print(n=25)
-
-
 
 ```
 
@@ -1725,7 +1820,7 @@ table2 <- header.oa %>%
   replace_na(list(Unit.of.Measurement="")) %>% 
   dplyr::select(Variable, `Range/Levels`, 
                 `Unit of Measurement`=Unit.of.Measurement, 
-                `Nr. Records`=No.records, `Type`=Type.of.variable)
+                `Nr. non-NA Records`=No.records, `Type`=Type.of.variable)
 
 write_csv(table2, "_output/Table2_header.csv")
 ```
@@ -1769,7 +1864,7 @@ kable1 <- kable(table1, format = "markdown")
 kable1[2] <- "|:------------|:--------------------------------------------|:--------------------|:--------------------|--------:|:--------|"
 readr::write_lines(kable1, file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary). Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}\n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary), and the number of non-empty (i.e., non NA) records. Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}. Additional details on the variables is in Bruelheide et al. (2019) [@doi:10.1111/jvs.12710]. GIVD codes derive from Dengler et al. (2011) [@doi:10.1111/j.1654-1103.2011.01265.x]. Biomes refer to Schultz 2005 [@doi:10.1007/3-540-28527-x], modified to include also the world mountain regions by Körner et al. (2017)[@doi:10.1007/s00035-016-0182-6]. The column ESY refers to the EUNIS Habitat Classification Expert system described in Chytrý et al. (2020) [@doi:10.1111/avsc.12519].\n", file = out.file, append=T)
 kable2 <- kable(table2, format = "markdown")
 ## fix header table 2
 kable2[2] <- "|:---------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:-----|"
