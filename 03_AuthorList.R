@@ -164,7 +164,7 @@ optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form response
   filter(!Name %in% c(first, third, custodians, core))
 
 ### second batch of opt-ins (mostly from TRY)
-### 24/11/2020
+### 26/11/2020
 optin2 <- openxlsx::read.xlsx("_management/UpdateAffiliations - sPlot (Responses).xlsx", sheet=1)
 colnames(optin2)[16:22] <-  paste0(colnames(optin2)[16:22], "_1")
 colnames(optin2)[23:28] <-  paste0(colnames(optin2)[23:28], "_2")
@@ -173,7 +173,7 @@ optin2 <- optin2 %>%
   rename_all(.funs=~gsub(pattern=".", replacement=" ", x=., fixed=T))
 
 names_to_import <- c('Meelis Pärtel', 'Sophie Gachet', 'Josep Penuela', 'Dirk Nikolaus Karger', 'Gregory Richard Guerin', 'Attila Lengyel', #20.11.2020
-                     'Frederic Lens') # update 24.11.2020
+                     'Frederic Lens') # update 26.11.2020
 
 optin2.aff <- NULL
 for(n in names_to_import) {
@@ -261,9 +261,62 @@ affiliations <- first %>%
                   Surname = "Bauters"
                 )
               ) %>% 
+              
+              ### Authors from RAINFOR - as recommended by Oliver Phillips
+              bind_rows(
+                tibble(
+                  Name = c("Abel Monteagudo Mendoza", "Rodolfo Vásquez Martínez"),
+                  Sequence_affiliations = 1,
+                  `E-Mail` = c("amonteagudomendoza@gmail.com", "neotaxon@yahoo.com"),
+                  `Department/Institute/Faculty` =
+                    "",
+                  `University/Institution` = "Jardín Botánico de Missouri Oxapampa",
+                  Street = "Bolognesi Mz-E-6",
+                  `Postal code` = NA,
+                  Town = "Oxapampa, Pasco",
+                  Country = "Peru",
+                  Surname = c("Monteagudo Mendoza", "Vásquez Martínez")
+                )
+              ) %>%
+              bind_rows(
+                tibble(
+                  Name = "Luzmila Arroyo",
+                  Sequence_affiliations = 1,
+                  `E-Mail` = "luzmilaarroyo@hotmail.com",
+                  `Department/Institute/Faculty` = "Dirección de la Carrera de Biología",
+                  `University/Institution` = "Universidad Autónoma Gabriel René Moreno",
+                  Street = NA,
+                  `Postal code` = NA,
+                  Town = "Santa Cruz de la Sierra",
+                  Country = "Bolivia",
+                  Surname = "Arroyo"
+                )
+              ) %>%
+              bind_rows(
+                tibble(
+                  Name = "Timothy Killeen",
+                  Sequence_affiliations = 1,
+                  `E-Mail` = "timothy.j.killeen@gmail.com",
+                  `Department/Institute/Faculty` =
+                    "Museo de Historia Natural Noel Kempff Mercado",
+                  `University/Institution` = "Universidad Autonoma Gabriel Rene Moreno",
+                  Street = NA,
+                  `Postal code` = NA,
+                  Town = "Santa Cruz de la Sierra",
+                  Country = "Bolivia",
+                  Surname = "Killeen"
+                )
+              ) %>%
               ## Add possible additional coauthors here
               bind_rows(allaffiliations %>% 
-                          filter(Name%in% c("Anita Smyth","Alireza Naqinezhad","Sylvia Haider", "Pavel Shirokikh", "Alicia T.R. Acosta", "Bruno Hérault"))) %>% 
+                          filter(Name%in% c("Anita Smyth",
+                                            "Alireza Naqinezhad",
+                                            "Sylvia Haider", 
+                                            "Pavel Shirokikh", 
+                                            "Alicia T.R. Acosta", 
+                                            "Bruno Hérault", 
+                                            'Petr Petřík', 
+                                            "Donald Waller"))) %>% 
               ##
               bind_rows(optins) %>% 
               bind_rows(optin2.aff) %>% 
@@ -275,8 +328,6 @@ affiliations <- first %>%
   replace_na(list(`Department/Institute/Faculty`="", Street="", `Postal code`="", Town="",   Country="" )) %>% 
   unite(`University/Institution`, `Department/Institute/Faculty`, Street:Country, sep = ", ", col="affiliations", remove=T) %>% 
   mutate(affiliations=str_replace_all(string = affiliations, pattern=", , ", replacement = ", ")) %>% 
-  ## exclude authors who declined offer
-  filter(!name %in% c("Marten Winter", "Ching-Feng Li", "Kim Sarah Jacobsen")) %>% 
   ### Add Github accounts, if required
   mutate(github="") %>% 
   mutate(github=ifelse(name=="Miguel Alvarez", "kamapu", github)) %>% 
@@ -299,6 +350,15 @@ affiliations <- first %>%
   ungroup() %>% 
   ## correct typo
   mutate(name=replace(name, list=name=="Andraž Carni", values="Andraž Čarni"))
+
+
+#### 2.4 opt-out ####
+## exclude authors who declined offer
+affiliations <- affiliations %>% 
+  filter(!name %in% c("Marten Winter", 
+                      "Ching-Feng Li", 
+                      "Kim Sarah Jacobsen",
+                      "Desalegn Wana")) 
 
 
 #### 3. Create metadata.yaml file ####
