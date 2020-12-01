@@ -161,7 +161,16 @@ optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form response
   dplyr::select(Name, Surname, Sequence_affiliations:Country) %>% 
   mutate_if(.predicate = ~is.character(.), 
             .funs = list(~gsub(pattern = ",$", replacement = "", x = {.}))) %>% 
-  filter(!Name %in% c(first, third, custodians, core))
+  filter(!Name %in% c(first, third, custodians, core)) %>% 
+  mutate(ORCID=replace(ORCID,
+                       list=Name=="Inger Greve Alsos", 
+                       values="0000-0002-8610-1085")) %>% 
+  mutate(Town=replace(Town,
+                      list=Name=="John-Arvid Grytnes",
+                      values="Bergen")) %>% 
+  mutate(Country=replace(Country,
+                      list=Name=="John-Arvid Grytnes",
+                      values="Norway"))
 
 ### second batch of opt-ins (mostly from TRY)
 ### 26/11/2020
@@ -309,7 +318,7 @@ affiliations <- first %>%
               ) %>%
               ## Add possible additional coauthors here
               bind_rows(allaffiliations %>% 
-                          filter(Name%in% c("Anita Smyth",
+                          filter(Name%in% c(#"Anita Smyth",
                                             "Alireza Naqinezhad",
                                             "Sylvia Haider", 
                                             "Pavel Shirokikh", 
