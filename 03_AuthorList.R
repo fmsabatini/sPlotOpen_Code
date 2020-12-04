@@ -173,7 +173,7 @@ optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form response
                       values="Norway"))
 
 ### second batch of opt-ins (mostly from TRY)
-### 26/11/2020
+### 02/12/2020
 optin2 <- openxlsx::read.xlsx("_management/UpdateAffiliations - sPlot (Responses).xlsx", sheet=1)
 colnames(optin2)[16:22] <-  paste0(colnames(optin2)[16:22], "_1")
 colnames(optin2)[23:28] <-  paste0(colnames(optin2)[23:28], "_2")
@@ -182,7 +182,7 @@ optin2 <- optin2 %>%
   rename_all(.funs=~gsub(pattern=".", replacement=" ", x=., fixed=T))
 
 names_to_import <- c('Meelis Pärtel', 'Sophie Gachet', 'Josep Penuela', 'Dirk Nikolaus Karger', 'Gregory Richard Guerin', 'Attila Lengyel', #20.11.2020
-                     'Frederic Lens') # update 26.11.2020
+                     'Frederic Lens', 'Débora Vanessa Lingner') # update 2.12.2020
 
 optin2.aff <- NULL
 for(n in names_to_import) {
