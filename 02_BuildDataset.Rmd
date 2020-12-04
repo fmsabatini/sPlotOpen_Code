@@ -266,6 +266,7 @@ header.oa <- header.oa %>%
                                       "Only dominant species"="Dominant vascular plants",
                                       "Woody plants >= 1 m height"="trees and shrubs >1 m height"
                                       )) %>% 
+  mutate(Biome = fct_recode(Biome, "Subtropics with year-round rain"="Subtrop. with year-round rain")) %>% 
   #reorder levels of `Plants recorded`
   mutate(`Plants recorded`=factor(`Plants recorded`, 
                                   levels=c('All vascular plants', 
@@ -288,6 +289,8 @@ header.oa <- header.oa %>%
   mutate(`Altitude (m)`=ifelse(`Altitude (m)`< -100, NA, `Altitude (m)`)) %>% 
   #plots from Veg_bank seem to have a mix of feet and meter in Altitude
   mutate(`Altitude (m)`=ifelse(`GIVD ID`=="NA-US-002", NA, `Altitude (m)`)) %>%  
+  #constrain Aspect between 1 and 360
+  mutate(`Aspect (°)`=ifelse(`Aspect (°)`<1, 360-`Aspect (°)`, `Aspect (°)`)) %>% 
   mutate(`Slope (°)`=ifelse(`Slope (°)`<0, NA, `Slope (°)`)) %>%  
   mutate(`Slope (°)`=ifelse(`Slope (°)`>90, NA, `Slope (°)`)) %>%  
   mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
@@ -1734,8 +1737,13 @@ table1 <- databases %>%
   filter(!is.na(contributed_plots)) %>% 
   replace_na(list(tag="",
                   `Deputy custodian`="")) %>% 
-  dplyr::select(`GIVD ID`, `Dataset name`=`DB_name GIVD`,  Custodian, `Deputy custodian`, `Nr. OA plots` = contributed_plots, Ref=tag) %>% 
-  arrange(`GIVD ID`)
+  dplyr::select(`GIVD ID`, `Dataset name`=`DB_name GIVD`,  Custodian, `Deputy custodian`, `Nr. open-access plots` = contributed_plots, Ref=tag) %>% 
+  arrange(`GIVD ID`) %>% 
+  # replace citation rendered wrongly using doi
+  mutate(Ref=replace(Ref,
+                     list=`GIVD ID`=="AU-AU-002", 
+                     values="@isbn:9781315368252"))
+
 
 write_csv(table1, "_output/Table1_Databases.csv")
 ```
