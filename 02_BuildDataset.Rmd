@@ -544,7 +544,7 @@ plotinfo.raw <- read_delim("_data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test2.c
                              ORIG_DB = col_character()
                            )) %>% 
   #drop empty field
-  select(where(~ !(all(is.na(.)) | all(. == ""))))
+  dplyr::select(where(~ !(all(is.na(.)) | all(. == ""))))
 ```
 ### Dataset-level biblio-references
 Import dataset-level BibTex reference list and database-level information
@@ -1622,7 +1622,7 @@ w3a <- ggplot() +
 Data Preparation for spatial plotting
 ```{r, cache=T, results="hide", warning=F, message=F}
 header.sf <- SpatialPointsDataFrame(coords= header.oa %>% 
-                                      select(Longitude, Latitude), 
+                                      dplyr::select(Longitude, Latitude), 
                                     proj4string = CRS("+init=epsg:4326"), 
                                     data=data.frame(PlotObservationID=header.oa$PlotObservationID, 
                                                     Dataset=header.oa$Dataset)) %>% 
@@ -1642,7 +1642,7 @@ w3a +
 Version 2  - hexagons
 ```{r, fig.width=8, fig.height=6, fig.align="center", message=F, cache=T}
 header2 <- header.oa %>% 
-  select(PlotObservationID, Latitude, Longitude) %>% 
+  dplyr::select(PlotObservationID, Latitude, Longitude) %>% 
   filter(!(abs(Longitude) >171 & abs(Latitude>70)))
 dggs <- dgconstruct(spacing=300, metric=T, resround='down')
 
@@ -1672,7 +1672,7 @@ w3a +
 
 ```
 
-## Figure 2  Whittaker Biome Graph
+## Figure 2 - Whittaker Biome Graph
 Get climatic data
 ```{r}
 load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
@@ -1690,6 +1690,203 @@ whittaker_base_plot() +
               aes(x=bio01, y=bio12/10), 
              alpha=1/3, 
              cex=1/15)
+```
+
+## Figure 3(?) - PCA graph + world map of selected plots
+
+Create template of small world map
+```{r}
+sPDF <- rworldmap::getMap(resolution="coarse")
+continent <- sPDF[,"continent"]
+crs(continent) <- CRS("+init=epsg:4326")
+continent@data[243,"continent"] <- "South America" ## Manually correct missing data
+# create clipped version of continent to avoid going beyond 180 lON
+coords <- data.frame(x=c(-180,180,180,-180),
+                     y=c(-90,-90,90,90))
+bboxc = Polygon(coords)
+bboxc = SpatialPolygons(list(Polygons(list(bboxc), ID = "a")), proj4string=crs(continent))
+continent_clipped <- rgeos::gIntersection(continent[-137,], bboxc, byid=T) # polygon 137 gives problems... workaround
+continent_clipped <- continent_clipped %>% 
+  st_as_sf()
+
+(w4a <- ggplot() +
+    geom_sf(data = bb, col = "grey20", fill = "white") +
+    geom_sf(data = continent_clipped, fill = "grey90", col = NA, lwd = 0.3) +
+    geom_sf(data = bb, col = "grey20", fill = NA) +
+    #geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
+    coord_sf(crs = "+proj=eck4") +
+    theme_minimal() +
+    theme(axis.text = element_blank(), 
+          legend.title=element_text(size=12), 
+          legend.text=element_text(size=12),
+          legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+          legend.key.height = unit(1.1, "cm"), 
+          legend.key.width = unit(1.1, "cm"))
+)
+```
+
+Import PCA data
+```{r}
+library(raster)
+### load PCA ordination of the world
+load("/data/sPlot/users/Francesco/Global_Graphs/sPlot_PCA3.RData")
+path.sPlot <- "/data/sPlot2.0/"
+load(paste(path.sPlot, "splot.world2.RData", sep="/"))
+```
+
+
+
+```{r, eval=f, echo=F}
+## version 1, Create world rasters of PCA values and extract plot values by geographic intersection
+## code adapted from @lenjon
+
+# raster at half a degree resolution (cf. 30 arc minute resolution)
+rgeo <- raster(nrows=360, ncols=720, xmn=-180, xmx=180, ymn=-90, ymx=90) 
+rgeo <- disaggregate(rgeo, fact=12) # raster at 2.5 arc minute resolution
+splot.world2$cellID <- cellFromXY(rgeo, cbind(splot.world2$RAST_X, splot.world2$RAST_Y))
+
+posit <- splot.world2$cellID
+temp <- getValues(rgeo)
+
+### create rasters from PCA
+temp[posit] <- pca3$x[, 1]
+PC1_r <- setValues(rgeo, temp)
+temp[posit] <- pca3$x[, 2]
+PC2_r <- setValues(rgeo, temp)
+
+### Project plots from sPlot Open in PCA space, based on geographic coordinates
+header.shp <- SpatialPointsDataFrame(coords= header.oa %>% 
+                                       dplyr::select(Longitude, Latitude),
+                                     proj4string = CRS("+init=epsg:4326"), 
+                                     data=data.frame(PlotObservationID= header.oa$PlotObservationID))
+
+header.oa$PC1 <- raster::extract(PC1_r, header.shp)
+header.oa$PC2 <- raster::extract(PC2_r, header.shp)
+```
+
+
+Assign pca values to `header.oa` and create data.frame for plotting, binding world pca and plot pca values
+```{r}
+header.oa <- header.oa %>% 
+  left_join(pca.grids %>% 
+              dplyr::select(PlotObservationID, PC1=pc1_val, PC2=pc2_val), 
+            by="PlotObservationID")
+
+pca12 <- pca3$x[,1:2] %>% 
+  as_tibble() %>% 
+  mutate_all(~round(.,2)) %>% 
+  distinct() %>% 
+  mutate(world=T, sPlot=NA) %>% 
+  bind_rows(tibble(PC1=header.oa$PC1, PC2=header.oa$PC2, world=NA, sPlot=T, PlotObservationID=header.oa$PlotObservationID))
+```
+
+Make gridded bin2d heatmap plot
+```{r}
+pca.heatmap <- ggplot(pca12) + 
+  stat_summary_2d(
+    aes(x = PC1, y = PC2, z = world),
+    bins = 100,
+    fun = function(x) {max(x)},
+    col = gray(0.8),
+    fill = gray(0.8)) +
+  stat_summary_2d(
+    aes(x = PC1, y = PC2, z = sPlot),
+    bins = 100,
+    fun = function(x) {
+      tmp <- sum(x)
+      tmp <- ifelse(tmp>50, 50, tmp)
+      return(tmp)}) +
+    
+  scale_fill_viridis("Number\nof plots", option = "magma") +
+  theme_bw() + 
+  coord_equal() + 
+  theme(legend.position = "bottom", 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+### get data building the heatmap
+pca.heatmap.build <- ggplot_build(pca.heatmap)$data[[2]]
+```
+
+Randomly select four pixels with >45 plots, extract center coordinates and add to heatmap.
+```{r}
+set.seed(557)
+ABC <- pca.heatmap.build %>% 
+  filter(value>45 & value<50) %>% 
+  rowwise() %>% 
+  mutate(xmean=mean(xmin, xmax)) %>% 
+  mutate(ymean=mean(ymin, ymax)) %>% 
+  ungroup() %>% 
+  mutate(upper=ymean > 1) %>% 
+  mutate(right=xmean > 0) %>% 
+  group_by(upper, right) %>% 
+  sample_n(1) %>% 
+  ungroup() %>% 
+  mutate(label=c("A", "B", "C", "D"))
+  
+
+### add labels to heatmap
+pca.heatmap2 <- pca.heatmap + 
+  geom_point(data=ABC, aes(x=xmean, y=ymean), pch=21,  size=2, col="black", fill="white") + 
+  ggrepel::geom_label_repel(data=ABC, aes(x=xmean, y=ymean, label=label), size = 2.5, fill = alpha(c("white"),0.7)) + 
+  theme(legend.position = "left")
+```
+
+For each of the selected grid cells, get all plots belonging to that cell, and show their geographical distribution.
+```{r}
+inset.list <- list()
+for(i in 1:4){
+  tmp.ABC <- ABC %>% 
+    slice(i)
+  xmin <- tmp.ABC$xmin
+  xmax <- tmp.ABC$xmax
+  ymin <- tmp.ABC$ymin
+  ymax <- tmp.ABC$ymax
+  coords.ABC <- header.oa %>% 
+    mutate(sel=(PC1 > xmin & PC1 < xmax &
+                PC2 > ymin & PC2 < ymax)) %>% 
+    filter(sel) %>% 
+    dplyr::select(Longitude, Latitude) %>% 
+    rowwise() %>% 
+    mutate_at(.vars=vars(Longitude, Latitude),
+              .funs=~jitter(.)) %>%  
+    ungroup() %>% 
+    SpatialPoints(proj4string = CRS("+init=epsg:4326")) %>% 
+    st_as_sf() %>% 
+    st_transform(crs = "+proj=eck4")
+  
+#  ### same for world grids
+#  ### The idea is to shade the world map where the PCA1-2 environmental combinations match those of the selected traits
+#  ### besides being pretty slow to render (but downsampling the raster helps), shaded areas are pretty small
+#  ### and barely visibile in the world maps.
+  
+# ### get coordinates of plots in selected pixels
+#  PC1_r2 <- aggregate(PC1_r, fact=4)
+#  PC2_r2 <- aggregate(PC2_r, fact=4)
+#  PC1_r_ABC <- PC1_r2
+#  PC1_r_ABC[PC1_r2<xmin | PC1_r2>xmax] <- NA
+#  
+#  PC2_r_ABC <- PC2_r2
+#  PC2_r_ABC[PC2_r_ABC<ymin | PC2_r_ABC>ymax] <- NA
+#  mask.ABC <- !is.na(PC1_r_ABC*PC2_r_ABC)
+#  
+#  mask.ABC <- rasterToPoints(mask.ABC, spatial = TRUE) %>% 
+#    as_data_frame()
+#
+  inset.list[[i]] <- w4a + 
+#    geom_raster(data = mask.ABC , aes(x = x, y = y, fill = "black")) + 
+    geom_sf(data=coords.ABC, col=2, pch="+", size=2)
+}
+```
+
+Create panel, joining the labeled heatmap, and the for inset maps.
+```{r}
+library(cowplot)
+panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.list[[2]], nrow=2, labels = c("A", "B")),
+                                               plot_grid(inset.list[[3]], inset.list[[4]], nrow=2, labels = c("C", "D"))), 
+          ncol=2, rel_widths = c(0.35, 0.65), align = "h")
+
+ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
 ```
 
 
