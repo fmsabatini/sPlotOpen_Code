@@ -182,7 +182,8 @@ optin2 <- optin2 %>%
   rename_all(.funs=~gsub(pattern=".", replacement=" ", x=., fixed=T))
 
 names_to_import <- c('Meelis Pärtel', 'Sophie Gachet', 'Josep Penuela', 'Dirk Nikolaus Karger', 'Gregory Richard Guerin', 'Attila Lengyel', #20.11.2020
-                     'Frederic Lens', 'Débora Vanessa Lingner') # update 2.12.2020
+                     'Frederic Lens', 'Débora Vanessa Lingner', "Arindam Banerjee", "Farideh Fazayeli") # update 8.12.2020
+
 
 optin2.aff <- NULL
 for(n in names_to_import) {
