@@ -1,0 +1,711 @@
+---
+title: "Project#02 - Fugres and Tables"
+author: "Francesco Maria Sabatini"
+date: "4/28/2020"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+<center>
+  ![](https://www.idiv.de/fileadmin/content/Files_sDiv/sDiv_Workshops_Photos_Docs/sDiv_WS_Documents_sPlot/splot-long-rgb.png "sPlot Logo")
+</center>
+  
+    
+      
+        
+**Timestamp:** `r date()`  
+**Drafted:** Francesco Maria Sabatini  
+**Revised:**  
+**Version:** 1.0
+  
+This report documents the creation of figures and tables for the sPlotOpen manuscript.
+  
+```{r results="hide", message=F, warning=F}
+library(tidyverse)
+#library(openxlsx)
+#library(bib2df)
+library(knitr)
+library(kableExtra)
+library(viridis)
+library(plotbiomes)
+
+library(raster)
+library(sp)
+library(sf)
+library(rgdal)
+library(rnaturalearth)
+library(dggridR)
+# library(rgeos)
+
+library(Taxonstand)
+
+#save temporary files
+write("TMPDIR = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('TMPDIR'), '.Renviron'))
+write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_USER'), '.Renviron'))
+#rasterOptions(tmpdir="/data/sPlot/users/Francesco/_tmp")
+```
+
+#Load sPlotOpen data and create spatial objects
+```{r}
+load(file.path("_sPlotOpenDB", "sPlotOpen.RData"))
+```
+
+Data Preparation for spatial plotting
+```{r, cache=T, results="hide", warning=F, message=F}
+header.sf <- SpatialPointsDataFrame(coords= header.oa %>% 
+                                      dplyr::select(Longitude, Latitude), 
+                                    proj4string = CRS("+init=epsg:4326"), 
+                                    data=data.frame(PlotObservationID=header.oa$PlotObservationID, 
+                                                    Dataset=header.oa$Dataset)) %>% 
+  st_as_sf() %>% 
+  st_transform(crs = "+proj=eck4")
+```
+
+# Load ancillary geographic data and create figure templates
+
+Country boundaries and world graticule
+```{r, cache=T, results="hide", warning=F, message=F}
+#download data from rnaturalearth package
+countries <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_admin_0_countries.shp") %>% 
+  st_as_sf() %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+graticules <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_graticules_15.shp") %>% 
+  st_as_sf() %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+
+bb <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_wgs84_bounding_box.shp") %>% 
+    st_as_sf() %>% 
+  #ne_download(type = "wgs84_bounding_box", category = "physical",
+      #            returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+```
+
+
+Continent boundaries
+```{r}
+sPDF <- rworldmap::getMap(resolution="coarse")
+continent <- sPDF[,"continent"]
+crs(continent) <- CRS("+init=epsg:4326")
+continent@data[243,"continent"] <- "South America" ## Manually correct missing data
+# create clipped version of continent to avoid going beyond 180 lON
+coords <- data.frame(x=c(-180,180,180,-180),
+                     y=c(-90,-90,90,90))
+bboxc = Polygon(coords)
+bboxc = SpatialPolygons(list(Polygons(list(bboxc), ID = "a")), proj4string=crs(continent))
+continent_clipped <- rgeos::gIntersection(continent[-137,], bboxc, byid=T) # polygon 137 gives problems... workaround
+continent_clipped <- continent_clipped %>% 
+  st_as_sf()
+```
+
+Template of Global map - with country borders
+```{r, cache=T, results="hide", warning=F, message=F}
+# create ggplot template of the world map
+w3a <- ggplot() +
+  geom_sf(data = bb, col = "grey20", fill = "white") +
+  geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
+  geom_sf(data = countries, fill = "grey90", col = NA, lwd = 0.3) +
+  coord_sf(crs = "+proj=eck4") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), 
+        legend.title=element_text(size=12), 
+        legend.text=element_text(size=12),
+        legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+        legend.key.height = unit(1.1, "cm"), 
+        legend.key.width = unit(1.1, "cm")) +
+  scale_fill_viridis()
+```
+
+Create template of Global Map - without country borders
+```{r}
+w4a <- ggplot() +
+    geom_sf(data = bb, col = "grey20", fill = "white") +
+    geom_sf(data = continent_clipped, fill = "grey90", col = NA, lwd = 0.3) +
+    geom_sf(data = bb, col = "grey20", fill = NA) +
+    #geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
+    coord_sf(crs = "+proj=eck4") +
+    theme_minimal() +
+    theme(axis.text = element_blank(), 
+          legend.title=element_text(size=12), 
+          legend.text=element_text(size=12),
+          legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+          legend.key.height = unit(1.1, "cm"), 
+          legend.key.width = unit(1.1, "cm"))
+
+```
+
+
+
+# Figures
+Figures and tables for the manuscript in the [sPlotOpen_Manuscript](https://fmsabatini.github.io/sPlotOpen_Manuscript/) project.
+
+## Figure 1 - Geographic distribution of plots
+
+Map of plot distribution - Version 1 - Coloured point.  
+Each colour represents a database. Please note there are not enough colours in the palette to represent all 103 datasets
+```{r, fig.width=8, fig.height=6, fig.align="center", warning=F, message=F, cache=T}
+w3a + 
+  geom_sf(data=header.sf, aes(color=Dataset), pch="+", size=1, alpha=0.8) + # aes(col=Dataset),
+  geom_sf(data = countries, col = "grey10", fill=NA, lwd = 0.3) + 
+  theme(legend.position = "none")
+```
+
+Version 2  - hexagons
+```{r, fig.width=8, fig.height=6, fig.align="center", message=F, cache=T}
+header2 <- header.oa %>% 
+  dplyr::select(PlotObservationID, Latitude, Longitude) %>% 
+  filter(!(abs(Longitude) >171 & abs(Latitude>70)))
+dggs <- dgconstruct(spacing=300, metric=T, resround='down')
+
+#Get the corresponding grid cells for each plot
+header2$cell <- dgGEO_to_SEQNUM(dggs, header2$Longitude, header2$Latitude)$seqnum
+
+#Calculate number of plots for each cell
+header.dggs   <- header2 %>% 
+  group_by(cell) %>% 
+  summarise(value.out=log(n(), 10))
+
+#Get the grid cell boundaries for cells 
+grid   <- dgcellstogrid(dggs, header.dggs$cell, frame=F) %>%
+  st_as_sf() %>% 
+  mutate(cell = header.dggs$cell) %>% 
+  mutate(value.out=header.dggs$value.out) %>% 
+  st_transform("+proj=eck4") %>% 
+  st_wrap_dateline(options = c("WRAPDATELINE=YES"))
+
+## plotting
+(Figure1 <- w3a + 
+    geom_sf(data=grid, aes(fill=value.out),lwd=0, alpha=0.9)    +
+    geom_sf(data = countries, col = "grey10", fill=NA, lwd = 0.3) + 
+    scale_fill_viridis(
+      name="# plots", breaks=0:5, labels = c("1", "10", "100",
+                                             "1,000", "10,000", "100,000"), option="viridis"))
+
+ggsave("_output/figure1.png", plot=Figure1, width=8, height=6, units="in", dpi=300)
+```
+
+## Figure 2 - Whittaker Biome Graph
+Get climatic data
+```{r}
+load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
+climate.oa <- climate %>% 
+  filter(PlotID %in% header.oa$PlotObservationID) %>% 
+  dplyr::select(-POINT_X, -POINT_Y) %>% 
+  rename(PlotObservationID=PlotID)
+```
+
+Create Whittaker plot
+```{r, fig.width=8, fig.height=5, fig.align="center", message=F, cache=T}
+whitt.biome <- whittaker_base_plot() +
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10), 
+             alpha=1/4, 
+             cex=1/20) + 
+    theme(axis.text.y = element_blank(),
+          axis.text = element_text(size=9),
+          axis.title.y = element_blank(),
+          axis.title = element_text(size=9),
+          plot.margin=margin(l=-0.2, r=-0.1, unit="cm"), 
+          legend.text = element_text(size=8),
+          legend.title = element_text(size=9)) 
+```
+Create plot of Schultz' biomes
+```{r}
+biome.order <- c('Polar and subpolar zone' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
+                 'Dry midlatitudes' ,'Dry tropics and subtropics' ,'Subtropics with year-round rain' ,
+                 'Subtropics with winter rain' ,'Tropics with summer rain' ,'Tropics with year-round rain')
+biome.labs <- c('Polar & subpolar' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
+                 'Dry midlatitudes' ,'Dry tropics & subtropics' ,'Subtropics w/ year-round\n rain' ,
+                 'Subtropics w/ winter\n rain' ,'Tropics w/ summer rain' ,'Tropics w/ year-round\n rain')
+
+
+mypalette <- palette(c(
+'#CAB2D6','#6A3D9A', #violets
+'#A6CEE3','#1F78B4', #blues
+'#FDBF6F','#FF7F00', #orange
+'#B2DF8A','#33A02C', #greens
+'#FB9A99','#E31A1C' #reds
+))
+
+# Plot of Temp vs Prec + sBiomes
+biome.schu <- ggplot() + 
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+               left_join(header.oa %>% 
+                           dplyr::select(PlotObservationID, Biome), 
+                         by="PlotObservationID") %>%  
+              filter(bio12<4500 & bio01>-11) %>% 
+               mutate(Biome=factor(Biome, levels=biome.order, labels=biome.labs))
+              # mutate(alpha=ifelse(Biome=="Tropics with summer rain", 1, 1/3))
+               , #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10, col=Biome), 
+             alpha=1/3, 
+             cex=1/15) + 
+  xlab("Temperature (°C)") + 
+  ylab("Precipitation (mm)") + 
+  scale_color_manual(values = mypalette, name="Schultz (2005) Biomes") + 
+  guides(color = guide_legend(override.aes = list(size=5, shape=15, alpha=1))) + 
+  theme(#plot.margin=margin(r=-0.1, unit="cm"),
+        axis.title = element_text(size=9),
+        axis.text = element_text(size=9),
+        legend.text = element_text(size=8), 
+        legend.title = element_text(size=9))
+
+```
+Make a panel with the two plots
+```{r}
+panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, align = "h", rel_widths = c(0.5, .5))
+ggsave(filename="_output/figure2.png", plot = panel.biomes, width = 10, height=4, units="in")
+```
+
+# Supplementary figures
+## Figure S1 - PCA graph + world map of selected plots
+
+Import PCA data
+```{r}
+### load PCA ordination of the world
+load("_data/pca3.RData")
+path.sPlot <- "/data/sPlot2.0/"
+load(paste(path.sPlot, "splot.world2.RData", sep="/"))
+```
+
+Create data.frame for plotting, binding world and plot pca values
+```{r}
+header.oa <- header.oa %>% 
+  rename(PC1=SoilClim_PC1, PC2=SoilClim_PC2)
+  
+pca12 <- pca3$x[,1:2] %>% 
+  as_tibble() %>% 
+  mutate_all(~round(.,2)) %>% 
+  distinct() %>% 
+  mutate(world=T, sPlot=NA) %>% 
+  bind_rows(tibble(PC1=header.oa$PC1, PC2=header.oa$PC2, world=NA, sPlot=T, PlotObservationID=header.oa$PlotObservationID))
+```
+
+Make gridded bin2d heatmap plot
+```{r}
+pca.heatmap <- ggplot(pca12) + 
+  stat_summary_2d(
+    aes(x = PC1, y = PC2, z = world),
+    bins = 100,
+    fun = function(x) {max(x)},
+    col = gray(0.8),
+    fill = gray(0.8)) +
+  stat_summary_2d(
+    aes(x = PC1, y = PC2, z = sPlot),
+    bins = 100,
+    fun = function(x) {
+      tmp <- sum(x)
+      #tmp <- ifelse(tmp>50, 50, tmp)
+      return(tmp)}) +
+    
+  scale_fill_viridis("Number\nof plots", option = "magma") +
+  theme_bw() + 
+  coord_equal() + 
+  theme(legend.position = "bottom", 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+### get data building the heatmap
+pca.heatmap.build <- ggplot_build(pca.heatmap)$data[[2]]
+```
+
+Randomly select four pixels with >45 plots, extract center coordinates and add to heatmap.
+```{r}
+set.seed(557)
+ABC <- pca.heatmap.build %>% 
+  filter(value>45 & value<50) %>% 
+  rowwise() %>% 
+  mutate(xmean=mean(xmin, xmax)) %>% 
+  mutate(ymean=mean(ymin, ymax)) %>% 
+  ungroup() %>% 
+  mutate(upper=ymean > 1) %>% 
+  mutate(right=xmean > 0) %>% 
+  group_by(upper, right) %>% 
+  sample_n(1) %>% 
+  ungroup() %>% 
+  mutate(label=c("A", "B", "C", "D"))
+  
+
+### add labels to heatmap
+pca.heatmap2 <- pca.heatmap + 
+  geom_point(data=ABC, aes(x=xmean, y=ymean), pch=21,  size=2, col="black", fill="white") + 
+  ggrepel::geom_label_repel(data=ABC, aes(x=xmean, y=ymean, label=label), size = 2.5, fill = alpha(c("white"),0.7)) + 
+  theme(legend.position = "left")
+```
+
+For each of the selected grid cells, get all plots belonging to that cell, and show their geographical distribution.
+```{r}
+inset.list <- list()
+for(i in 1:4){
+  tmp.ABC <- ABC %>% 
+    slice(i)
+  xmin <- tmp.ABC$xmin
+  xmax <- tmp.ABC$xmax
+  ymin <- tmp.ABC$ymin
+  ymax <- tmp.ABC$ymax
+  coords.ABC <- header.oa %>% 
+    mutate(sel=(PC1 > xmin & PC1 < xmax &
+                PC2 > ymin & PC2 < ymax)) %>% 
+    filter(sel) %>% 
+    dplyr::select(Longitude, Latitude) %>% 
+    rowwise() %>% 
+    mutate_at(.vars=vars(Longitude, Latitude),
+              .funs=~jitter(.)) %>%  
+    ungroup() %>% 
+    SpatialPoints(proj4string = CRS("+init=epsg:4326")) %>% 
+    st_as_sf() %>% 
+    st_transform(crs = "+proj=eck4")
+  
+#  ### same for world grids
+#  ### The idea is to shade the world map where the PCA1-2 environmental combinations match those of the selected traits
+#  ### besides being pretty slow to render (but downsampling the raster helps), shaded areas are pretty small
+#  ### and barely visibile in the world maps.
+  
+# ### get coordinates of plots in selected pixels
+#  PC1_r2 <- aggregate(PC1_r, fact=4)
+#  PC2_r2 <- aggregate(PC2_r, fact=4)
+#  PC1_r_ABC <- PC1_r2
+#  PC1_r_ABC[PC1_r2<xmin | PC1_r2>xmax] <- NA
+#  
+#  PC2_r_ABC <- PC2_r2
+#  PC2_r_ABC[PC2_r_ABC<ymin | PC2_r_ABC>ymax] <- NA
+#  mask.ABC <- !is.na(PC1_r_ABC*PC2_r_ABC)
+#  
+#  mask.ABC <- rasterToPoints(mask.ABC, spatial = TRUE) %>% 
+#    as_data_frame()
+#
+  inset.list[[i]] <- w4a + 
+#    geom_raster(data = mask.ABC , aes(x = x, y = y, fill = "black")) + 
+    geom_sf(data=coords.ABC, col=2, pch="+", size=2)
+}
+```
+
+Create panel, joining the labeled heatmap, and the for inset maps.
+```{r}
+library(cowplot)
+panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.list[[2]], nrow=2, labels = c("A", "B")),
+                                               plot_grid(inset.list[[3]], inset.list[[4]], nrow=2, labels = c("C", "D"))), 
+          ncol=2, rel_widths = c(0.35, 0.65), align = "h")
+
+ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
+```
+
+## Figure S2 - PCA world
+
+```{r, eval=f, echo=F}
+## Create world rasters of PCA values and extract plot values by geographic intersection
+## code adapted from @lenjon
+
+# raster at half a degree resolution (cf. 30 arc minute resolution)
+rgeo <- raster(nrows=360, ncols=720, xmn=-180, xmx=180, ymn=-90, ymx=90) 
+rgeo <- disaggregate(rgeo, fact=12) # raster at 2.5 arc minute resolution
+splot.world2$cellID <- cellFromXY(rgeo, cbind(splot.world2$RAST_X, splot.world2$RAST_Y))
+
+posit <- splot.world2$cellID
+temp <- getValues(rgeo)
+
+### create rasters from PCA
+temp[posit] <- pca3$x[, 1]
+PC1_r <- setValues(rgeo, temp)
+temp[posit] <- pca3$x[, 2]
+PC2_r <- setValues(rgeo, temp)
+
+# Compute the density of environmental conditions available at the global scale across the entire bivariate (PC1-PC2) environmental space
+#load("pca3.RData")
+res <- 100 # Setting the number of bins per PCA axis to 100
+reco <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
+PC1_PC2_r <- rasterize(pca3$x[, 1:2], reco, fun="count")
+# Compute the sampling effort (number of vegetation plots) per environmental unit (cell) across the entire bivariate (PC1-PC2) environmental space
+sPlot_reco <- rasterize(plot_data@data[, c("pc1_val", "pc2_val")], reco, fun="count")
+# Put zero values for the empty cells (cf. there is no vegeteation plots available for those environmental conditions: gaps) 
+temp1 <- getValues(PC1_PC2_r)
+temp1[!is.na(temp1)] <- 0
+temp2 <- getValues(sPlot_reco)
+temp2[which(temp1==0&is.na(temp2))] <- 0
+sPlot_reco <- setValues(reco, temp2)
+
+```
+
+
+
+
+```{r}
+splot.world2.eckert <- SpatialPointsDataFrame(coords=splot.world2 %>% 
+                         dplyr::select(RAST_X, RAST_Y), 
+                       data = splot.world2 %>% 
+                         dplyr::select(RAST_ID), 
+                       proj4string = CRS("+init=epsg:4326")) %>% 
+  spTransform(CRS("+proj=eck4"))
+
+splot.world2.eckert <- data.frame(splot.world2.eckert@coords, 
+                                   splot.world2.eckert@data)
+
+PCA_tbl <- as_tibble(splot.world2.eckert) %>%
+  dplyr::select(RAST_ID, RAST_X, RAST_Y) %>%
+  left_join(as.tbl(as.data.frame(pca3$x[,1:2]) %>%
+              rownames_to_column(var="RAST_ID")) %>%
+              mutate(RAST_ID=as.integer(RAST_ID)),
+      by="RAST_ID") %>%
+    mutate(PC0=1:n())
+
+ggpc1 <- w3a + 
+  geom_tile(data=PCA_tbl %>% 
+              mutate(PC1=ifelse(PC1> 6,  6, PC1)) %>% 
+              mutate(PC1=ifelse(PC1< -6, -6, PC1)) 
+            , aes(x=RAST_X,y=RAST_Y, fill=PC1, color=PC1)) + 
+  scale_fill_distiller("PC1", type = "seq", palette = "Spectral", 
+                       direction=-1, limits = c(-6.1,6.1), breaks=seq(-6,6, by=3), labels=c("<-6", -3, 0, 3,">6" )) +
+  scale_color_distiller("PC1", type = "seq", palette = "Spectral", 
+                        direction=-1, limits = c(-6.1,6.1), breaks=seq(-6,6, by=3), labels=c("<-6", -3, 0, 3,">6" )) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text = element_blank(),
+        panel.border = element_blank()) +
+  xlab("") + ylab("")
+
+
+ggpc2 <- w3a + 
+  geom_tile(data=PCA_tbl %>% 
+              mutate(PC2=ifelse(PC2> 9,  9, PC2)) %>% 
+              mutate(PC2=ifelse(PC2< -6, -6, PC2)) 
+            , aes(x=RAST_X,y=RAST_Y, fill=PC2, color=PC2)) + 
+  scale_fill_distiller("PC2", type = "seq", palette = "Spectral", 
+                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), labels=c("<-6", -3, 0, 3, 6,">9" )) +
+  scale_color_distiller("PC2", type = "seq", palette = "Spectral", 
+                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), labels=c("<-6", -3, 0, 3, 6,">9" )) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.text = element_blank(),
+        panel.border = element_blank()) +
+  xlab("") + ylab("")
+
+
+ggpc.panel <- cowplot::plot_grid(ggpc1, ggpc2, nrow=2, labels=c("a", "b"))
+ggsave(filename="_output/figureS2.png", width=7, height=6, units="in", dpi=300, plot=ggpc.panel)
+```
+
+## Figure S3 - Biplot
+```{r}
+library(ggrepel)
+varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
+
+mydata <- pca3$x %>% 
+         as_tibble() %>% 
+         dplyr::select(1:2) %>% 
+         mutate(count=1)
+myarrows <- pca3$rotation[,1:2] %>% 
+  as.data.frame() %>% 
+  rownames_to_column("mylab") %>%
+  mutate_at(.vars=vars(-mylab), .funs = list(~.*25)) %>% 
+  filter(!mylab %in% c("T_ANN", "P_ANN"))
+  
+
+ggpca3 <- ggplot(data=mydata #%>% 
+                   #sample_frac(0.1)
+                   ) +
+    stat_summary_2d(
+    aes(x = PC1, y = PC2, z = count),
+    bins = 100,
+    fun = function(x) {log10(sum(x)+1)},
+    alpha=1/2
+    ) +
+  geom_segment(data=myarrows, 
+               aes(x=0, xend=PC1, y=0, yend=PC2), 
+               arrow = arrow(length = unit(0.08, "inches")), alpha=0.8) +
+    geom_label_repel(data=myarrows, 
+             aes(x=PC1, y=PC2, label=mylab), size=2, 
+             position = position_dodge(2),segment.alpha=0.5, segment.colour=gray(0.8)) + 
+  scale_fill_viridis("Number of pixels\n (log10 + 1)", option = "magma", alpha=1/2,
+                     limits=c(0,5), breaks=log10(c(9,99,999,9999)), labels=10^(1:4)) +
+  theme_bw() + 
+  coord_equal() + 
+  theme(legend.position = c(0.2, 0.85), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  #guides(fill = guide_legend(override.aes = list(alpha=1/3))) + 
+  xlab(paste("PC1 (", varexpl[1], "%)\n (cold and seasonal to hot and stable)", sep="")) + 
+  ylab(paste("PC2 (", varexpl[2], "%)\n (dry to wet)", sep="")) + 
+  ylim(c(-6,22))
+
+ggsave("_output/figureS3.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
+```
+
+
+
+# Tables 
+## Table 1 - Database level information
+Import databases and create reference tags
+```{r, message=F, warning=F}
+#load(file.path("_sPlotOpenDB", "sPlotOpen.RData"))
+#Import BibTex
+bib.db <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
+#Import database-level information
+databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
+
+# create citation tags that can be picked up by Manubot
+databases <- databases %>% 
+  left_join(bib.db %>% 
+              dplyr::select(BIBTEXKEY, DOI, URL), 
+            by="BIBTEXKEY") %>% 
+  mutate(tag=NA) %>% 
+  rowwise() %>% 
+  mutate(tag=ifelse(!is.na(DOI), 
+                    paste0("@doi:", DOI), 
+                    tag)) %>% 
+  mutate(tag=ifelse( (is.na(tag) & `GIVD ID` %in% unique(header.oa$GIVD_ID) & !is.na(Citation)), 
+                     paste0("@", word(Citation, 1)), 
+                     tag)) %>% 
+  dplyr::select(-DOI, -URL, -BIBTEXKEY)
+  
+
+```
+
+Create Table 1
+
+```{r}
+table1 <- databases %>% 
+  filter(`Still in sPlot`==T, 
+         Via!="Aggregator") %>% 
+  dplyr::select(-Via, -`Still in sPlot`, -label) %>% 
+  distinct() %>% 
+  left_join(header.oa %>% 
+              group_by(GIVD_ID) %>% 
+              summarize(contributed_plots=n(), .groups = 'drop'), 
+            by=c("GIVD ID"="GIVD_ID")) %>% 
+  filter(!is.na(contributed_plots)) %>% 
+  replace_na(list(tag="",
+                  `Deputy custodian`="")) %>% 
+  dplyr::select(`GIVD ID`, `Dataset name`=`DB_name GIVD`,  Custodian, `Deputy custodian`, `Nr. open-access plots` = contributed_plots, Ref=tag) %>% 
+  arrange(`GIVD ID`) %>% 
+  # replace citation rendered wrongly using doi
+  mutate(Ref=replace(Ref,
+                     list=`GIVD ID`=="AU-AU-002", 
+                     values="@isbn:9781315368252"))
+
+
+write_csv(table1, "_output/Table1_Databases.csv")
+```
+
+```{r, echo=F}
+knitr::kable(table1%>% 
+               slice(1:20),
+             caption="Table 1 - Database level information [only first 20 rows shown]") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+
+
+## Table 2 - Metadata and environmental data included in header  
+Define unit of measurements for columns
+```{r}
+um <- c('Latitude'='° (WGS84)',
+'Longitude'='° (WGS84)',
+'Location_uncertainty'='m',
+'Releve_area'='m^2^',
+'Elevation'='m a.s.l.',
+'Aspect'='°',
+'Slope'='°',
+'Date_of_recording' = 'dd-mm-yyyy',
+'Cover_total'='%',
+'Cover_tree_layer'='%',
+'Cover_shrub_layer'='%',
+'Cover_herb_layer'='%',
+'Cover_moss_layer'='%',
+'Cover_lichen_layer'='%',
+'Cover_algae_layer'='%',
+'Cover_litter_layer'='%',
+'Cover_bare_rocks'='%',
+'Cover_cryptogams'='%',
+'Cover_bare_soil'='%',
+'Height_trees_highest'='m',
+'Height_trees_lowest'='m',
+'Height_shrubs_highest'='m',
+'Height_shrubs_lowest'='m',
+'Height_herbs_average'='cm',
+'Height_herbs_lowest'='cm',
+'Height_herbs_highest' = 'cm')
+um <- data.frame(Variable=names(um), `Unit of Measurement`=um)
+
+```
+
+Create table 2 
+```{r}
+table2 <- header.oa %>% 
+  dplyr::summarize_at(.vars=vars(!starts_with("PlotObservationID")),
+               .funs = list(xxxNo.records=~sum(!is.na(.)),
+                            xxxType.of.variable=~ifelse("logical" %in% class(.), "b",
+                                           ifelse("ordered" %in% class(.), 
+                                                 "o", 
+                                                  ifelse(any(class(.) %in% c("character", "factor")), 
+                                                         "n",
+                                                         ifelse(class(.)=="Date",
+                                                                "d",
+                                                                "q")))),
+                            xxxLevels=~(ifelse(is.numeric(.)|lubridate::is.Date(.), 
+                                               paste(range(., na.rm=T), collapse=" - "),
+                                               ifelse(is.ordered(.), 
+                                                      paste(paste(1:nlevels(.), 
+                                                                  levels(.), sep=" = "), collapse=", "),
+                                                      ifelse(is.factor(.), 
+                                                              paste(levels(.), collapse=", "),
+                                                              ifelse(is.logical(.),
+                                                                     paste(names(table(.)), "=",table(.),
+                                                                           collapse="; "),
+                                                                     ""))))))) %>%
+  gather(key="Variable") %>% 
+  separate(Variable, into = c("Variable", "feature"), sep="_xxx") %>% 
+  spread(key=feature, value = value) %>% 
+  rename(`Range/Levels`=Levels) %>% 
+  mutate(Variable=factor(Variable, levels=colnames(header.oa))) %>% 
+  arrange(Variable) %>% 
+  left_join(um, by="Variable") %>% 
+  mutate(Unit.of.Measurement=as.character(Unit.of.Measurement)) %>% 
+  replace_na(list(Unit.of.Measurement="")) %>% 
+  dplyr::select(Variable, `Range/Levels`, 
+                `Unit of Measurement`=Unit.of.Measurement, 
+                `Nr. non-NA Records`=No.records, `Type`=Type.of.variable)
+
+write_csv(table2, "_output/Table2_header.csv")
+```
+
+```{r, echo=F}
+knitr::kable(table2,
+             caption="Table 2 - Variables in header") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = F, position = "center")
+```
+
+
+## Sink tables for Manubot
+```{r}
+out.file <- "_output/91.ManubotTables.md"
+readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
+readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
+readr::write_lines("\n \n", file = out.file, append=T)
+kable1 <- kable(table1, format = "markdown")
+## fix header table 1
+kable1[2] <- "|:------------|:--------------------------------------------|:--------------------|:--------------------|--------:|:--------|"
+readr::write_lines(kable1, file = out.file, append=T)
+readr::write_lines("\n \n \n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary), and the number of non-empty (i.e., non NA) records. Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}. Additional details on the variables is in Bruelheide et al. (2019) [@doi:10.1111/jvs.12710]. GIVD codes derive from Dengler et al. (2011) [@doi:10.1111/j.1654-1103.2011.01265.x]. Biomes refer to Schultz 2005 [@doi:10.1007/3-540-28527-x], modified to include also the world mountain regions by Körner et al. (2017)[@doi:10.1007/s00035-016-0182-6]. The column ESY refers to the EUNIS Habitat Classification Expert system described in Chytrý et al. (2020) [@doi:10.1111/avsc.12519].\n", file = out.file, append=T)
+kable2 <- kable(table2, format = "markdown")
+## fix header table 2
+kable2[2] <- "|:---------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:-----|"
+readr::write_lines(kable2, file = out.file, append=T)
+```
+
+
+# SessionInfo
+```{r}
+sessionInfo()
+```
+
