@@ -25,7 +25,7 @@ This report documents the creation of figures and tables for the sPlotOpen manus
 ```{r results="hide", message=F, warning=F}
 library(tidyverse)
 #library(openxlsx)
-#library(bib2df)
+library(bib2df)
 library(knitr)
 library(kableExtra)
 library(viridis)
@@ -50,6 +50,8 @@ write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_
 #Load sPlotOpen data and create spatial objects
 ```{r}
 load(file.path("_sPlotOpenDB", "sPlotOpen.RData"))
+#header.oa <- header.oa %>% 
+#  filter(!is.na(SoilClim_PC1))
 ```
 
 Data Preparation for spatial plotting
@@ -188,84 +190,7 @@ grid   <- dgcellstogrid(dggs, header.dggs$cell, frame=F) %>%
 ggsave("_output/figure1.png", plot=Figure1, width=8, height=6, units="in", dpi=300)
 ```
 
-## Figure 2 - Whittaker Biome Graph
-Get climatic data
-```{r}
-load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
-climate.oa <- climate %>% 
-  filter(PlotID %in% header.oa$PlotObservationID) %>% 
-  dplyr::select(-POINT_X, -POINT_Y) %>% 
-  rename(PlotObservationID=PlotID)
-```
-
-Create Whittaker plot
-```{r, fig.width=8, fig.height=5, fig.align="center", message=F, cache=T}
-whitt.biome <- whittaker_base_plot() +
-  theme_classic() + 
-  geom_point(data=climate.oa %>% 
-                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
-              aes(x=bio01, y=bio12/10), 
-             alpha=1/4, 
-             cex=1/20) + 
-    theme(axis.text.y = element_blank(),
-          axis.text = element_text(size=9),
-          axis.title.y = element_blank(),
-          axis.title = element_text(size=9),
-          plot.margin=margin(l=-0.2, r=-0.1, unit="cm"), 
-          legend.text = element_text(size=8),
-          legend.title = element_text(size=9)) 
-```
-Create plot of Schultz' biomes
-```{r}
-biome.order <- c('Polar and subpolar zone' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
-                 'Dry midlatitudes' ,'Dry tropics and subtropics' ,'Subtropics with year-round rain' ,
-                 'Subtropics with winter rain' ,'Tropics with summer rain' ,'Tropics with year-round rain')
-biome.labs <- c('Polar & subpolar' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
-                 'Dry midlatitudes' ,'Dry tropics & subtropics' ,'Subtropics w/ year-round\n rain' ,
-                 'Subtropics w/ winter\n rain' ,'Tropics w/ summer rain' ,'Tropics w/ year-round\n rain')
-
-
-mypalette <- palette(c(
-'#CAB2D6','#6A3D9A', #violets
-'#A6CEE3','#1F78B4', #blues
-'#FDBF6F','#FF7F00', #orange
-'#B2DF8A','#33A02C', #greens
-'#FB9A99','#E31A1C' #reds
-))
-
-# Plot of Temp vs Prec + sBiomes
-biome.schu <- ggplot() + 
-  theme_classic() + 
-  geom_point(data=climate.oa %>% 
-               left_join(header.oa %>% 
-                           dplyr::select(PlotObservationID, Biome), 
-                         by="PlotObservationID") %>%  
-              filter(bio12<4500 & bio01>-11) %>% 
-               mutate(Biome=factor(Biome, levels=biome.order, labels=biome.labs))
-              # mutate(alpha=ifelse(Biome=="Tropics with summer rain", 1, 1/3))
-               , #filter out for plotting reasons 
-              aes(x=bio01, y=bio12/10, col=Biome), 
-             alpha=1/3, 
-             cex=1/15) + 
-  xlab("Temperature (°C)") + 
-  ylab("Precipitation (mm)") + 
-  scale_color_manual(values = mypalette, name="Schultz (2005) Biomes") + 
-  guides(color = guide_legend(override.aes = list(size=5, shape=15, alpha=1))) + 
-  theme(#plot.margin=margin(r=-0.1, unit="cm"),
-        axis.title = element_text(size=9),
-        axis.text = element_text(size=9),
-        legend.text = element_text(size=8), 
-        legend.title = element_text(size=9))
-
-```
-Make a panel with the two plots
-```{r}
-panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, align = "h", rel_widths = c(0.5, .5))
-ggsave(filename="_output/figure2.png", plot = panel.biomes, width = 10, height=4, units="in")
-```
-
-# Supplementary figures
-## Figure S1 - PCA graph + world map of selected plots
+## Figure 2 - PCA graph + world map of selected plots
 
 Import PCA data
 ```{r}
@@ -397,6 +322,133 @@ panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.
 ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
 ```
 
+
+## Figure 3 - Whittaker Biome Graph
+Get climatic data
+```{r}
+load("/data/sPlot/releases/sPlot2.1/sPlot_header_chelsa_20161124.RData")
+climate.oa <- climate %>% 
+  filter(PlotID %in% header.oa$PlotObservationID) %>% 
+  dplyr::select(-POINT_X, -POINT_Y) %>% 
+  rename(PlotObservationID=PlotID)
+```
+
+Create Whittaker plot
+```{r, fig.width=8, fig.height=5, fig.align="center", message=F, cache=T}
+whitt.biome <- whittaker_base_plot() +
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10), 
+             alpha=1/4, 
+             cex=1/20) + 
+    theme(axis.text.y = element_blank(),
+          axis.text = element_text(size=9),
+          axis.title.y = element_blank(),
+          axis.title = element_text(size=9),
+          plot.margin=margin(l=-0.2, r=-0.1, unit="cm"), 
+          legend.text = element_text(size=8),
+          legend.title = element_text(size=9)) 
+```
+Create plot of Schultz' biomes
+```{r}
+biome.order <- c('Polar and subpolar zone' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
+                 'Dry midlatitudes' ,'Dry tropics and subtropics' ,'Subtropics with year-round rain' ,
+                 'Subtropics with winter rain' ,'Tropics with summer rain' ,'Tropics with year-round rain')
+biome.labs <- c('Polar & subpolar' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
+                 'Dry midlatitudes' ,'Dry tropics & subtropics' ,'Subtropics w/ year-round\n rain' ,
+                 'Subtropics w/ winter\n rain' ,'Tropics w/ summer rain' ,'Tropics w/ year-round\n rain')
+
+
+mypalette <- palette(c(
+'#CAB2D6','#6A3D9A', #violets
+'#A6CEE3','#1F78B4', #blues
+'#FDBF6F','#FF7F00', #orange
+'#B2DF8A','#33A02C', #greens
+'#FB9A99','#E31A1C' #reds
+))
+
+# Plot of Temp vs Prec + sBiomes
+biome.schu <- ggplot() + 
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+               left_join(header.oa %>% 
+                           dplyr::select(PlotObservationID, Biome), 
+                         by="PlotObservationID") %>%  
+              filter(bio12<4500 & bio01>-11) %>% 
+               mutate(Biome=factor(Biome, levels=biome.order, labels=biome.labs))
+              # mutate(alpha=ifelse(Biome=="Tropics with summer rain", 1, 1/3))
+               , #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10, col=Biome), 
+             alpha=1/3, 
+             cex=1/15) + 
+  xlab("Temperature (°C)") + 
+  ylab("Precipitation (mm)") + 
+  scale_color_manual(values = mypalette, name="sBiomes") + 
+  guides(color = guide_legend(override.aes = list(size=5, shape=15, alpha=1))) + 
+  theme(#plot.margin=margin(r=-0.1, unit="cm"),
+        axis.title = element_text(size=9),
+        axis.text = element_text(size=9),
+        legend.text = element_text(size=8), 
+        legend.title = element_text(size=9))
+
+```
+Make a panel with the two plots
+```{r}
+panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, align = "h", rel_widths = c(0.5, .5))
+ggsave(filename="_output/figure2.png", plot = panel.biomes, width = 10, height=4, units="in")
+```
+
+# Supplementary figures
+
+
+
+## Figure S1 - Biplot
+```{r}
+library(ggrepel)
+varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
+
+mydata <- pca3$x %>% 
+         as_tibble() %>% 
+         dplyr::select(1:2) %>% 
+         mutate(count=1)
+myarrows <- pca3$rotation[,1:2] %>% 
+  as.data.frame() %>% 
+  rownames_to_column("mylab") %>%
+  mutate_at(.vars=vars(-mylab), .funs = list(~.*25)) %>% 
+  filter(!mylab %in% c("T_ANN", "P_ANN"))
+  
+
+ggpca3 <- ggplot(data=mydata #%>% 
+                   #sample_frac(0.1)
+                   ) +
+    stat_summary_2d(
+    aes(x = PC1, y = PC2, z = count),
+    bins = 100,
+    fun = function(x) {log10(sum(x)+1)},
+    alpha=1/2
+    ) +
+  geom_segment(data=myarrows, 
+               aes(x=0, xend=PC1, y=0, yend=PC2), 
+               arrow = arrow(length = unit(0.08, "inches")), alpha=0.8) +
+    geom_label_repel(data=myarrows, 
+             aes(x=PC1, y=PC2, label=mylab), size=2, 
+             position = position_dodge(2),segment.alpha=0.5, segment.colour=gray(0.8)) + 
+  scale_fill_viridis("Number of 2.5 arcmin\n terrestrial grid cells", option = "magma", alpha=1/2,
+                     limits=c(0,5), breaks=log10(c(9,99,999,9999)), labels=10^(1:4)) +
+  theme_bw() + 
+  coord_equal() + 
+  theme(legend.position = c(0.2, 0.85), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  #guides(fill = guide_legend(override.aes = list(alpha=1/3))) + 
+  xlab(paste("PC1 (", varexpl[1], "%)\n (cold and seasonal to hot and stable)", sep="")) + 
+  ylab(paste("PC2 (", varexpl[2], "%)\n (dry to wet)", sep="")) + 
+  ylim(c(-6,22))
+
+ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
+```
+
 ## Figure S2 - PCA world
 
 ```{r, eval=f, echo=F}
@@ -493,51 +545,6 @@ ggpc.panel <- cowplot::plot_grid(ggpc1, ggpc2, nrow=2, labels=c("a", "b"))
 ggsave(filename="_output/figureS2.png", width=7, height=6, units="in", dpi=300, plot=ggpc.panel)
 ```
 
-## Figure S1 - Biplot
-```{r}
-library(ggrepel)
-varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
-
-mydata <- pca3$x %>% 
-         as_tibble() %>% 
-         dplyr::select(1:2) %>% 
-         mutate(count=1)
-myarrows <- pca3$rotation[,1:2] %>% 
-  as.data.frame() %>% 
-  rownames_to_column("mylab") %>%
-  mutate_at(.vars=vars(-mylab), .funs = list(~.*25)) %>% 
-  filter(!mylab %in% c("T_ANN", "P_ANN"))
-  
-
-ggpca3 <- ggplot(data=mydata #%>% 
-                   #sample_frac(0.1)
-                   ) +
-    stat_summary_2d(
-    aes(x = PC1, y = PC2, z = count),
-    bins = 100,
-    fun = function(x) {log10(sum(x)+1)},
-    alpha=1/2
-    ) +
-  geom_segment(data=myarrows, 
-               aes(x=0, xend=PC1, y=0, yend=PC2), 
-               arrow = arrow(length = unit(0.08, "inches")), alpha=0.8) +
-    geom_label_repel(data=myarrows, 
-             aes(x=PC1, y=PC2, label=mylab), size=2, 
-             position = position_dodge(2),segment.alpha=0.5, segment.colour=gray(0.8)) + 
-  scale_fill_viridis("Number of 2.5 arcmin\n terrestrial grid cells", option = "magma", alpha=1/2,
-                     limits=c(0,5), breaks=log10(c(9,99,999,9999)), labels=10^(1:4)) +
-  theme_bw() + 
-  coord_equal() + 
-  theme(legend.position = c(0.2, 0.85), 
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()) +
-  #guides(fill = guide_legend(override.aes = list(alpha=1/3))) + 
-  xlab(paste("PC1 (", varexpl[1], "%)\n (cold and seasonal to hot and stable)", sep="")) + 
-  ylab(paste("PC2 (", varexpl[2], "%)\n (dry to wet)", sep="")) + 
-  ylim(c(-6,22))
-
-ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
-```
 
 
 
@@ -689,7 +696,7 @@ knitr::kable(table2,
 ```{r}
 out.file <- "_output/91.ManubotTables.md"
 readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
-readr::write_lines("Table: List of databases contributing to the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
+readr::write_lines("Table: List of databases contributing sPlotOpen, the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
 readr::write_lines("\n \n", file = out.file, append=T)
 kable1 <- kable(table1, format = "markdown")
 ## fix header table 1

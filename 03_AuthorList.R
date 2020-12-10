@@ -368,7 +368,8 @@ affiliations <- affiliations %>%
   filter(!name %in% c("Marten Winter", 
                       "Ching-Feng Li", 
                       "Kim Sarah Jacobsen",
-                      "Desalegn Wana")) 
+                      "Desalegn Wana", 
+                      "Milan Valachovič")) 
 
 
 #### 3. Create metadata.yaml file ####
