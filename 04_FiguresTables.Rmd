@@ -493,7 +493,7 @@ ggpc.panel <- cowplot::plot_grid(ggpc1, ggpc2, nrow=2, labels=c("a", "b"))
 ggsave(filename="_output/figureS2.png", width=7, height=6, units="in", dpi=300, plot=ggpc.panel)
 ```
 
-## Figure S3 - Biplot
+## Figure S1 - Biplot
 ```{r}
 library(ggrepel)
 varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
@@ -524,7 +524,7 @@ ggpca3 <- ggplot(data=mydata #%>%
     geom_label_repel(data=myarrows, 
              aes(x=PC1, y=PC2, label=mylab), size=2, 
              position = position_dodge(2),segment.alpha=0.5, segment.colour=gray(0.8)) + 
-  scale_fill_viridis("Number of pixels\n (log10 + 1)", option = "magma", alpha=1/2,
+  scale_fill_viridis("Number of 2.5 arcmin\n terrestrial grid cells", option = "magma", alpha=1/2,
                      limits=c(0,5), breaks=log10(c(9,99,999,9999)), labels=10^(1:4)) +
   theme_bw() + 
   coord_equal() + 
@@ -536,7 +536,7 @@ ggpca3 <- ggplot(data=mydata #%>%
   ylab(paste("PC2 (", varexpl[2], "%)\n (dry to wet)", sep="")) + 
   ylim(c(-6,22))
 
-ggsave("_output/figureS3.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
+ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
 ```
 
 
