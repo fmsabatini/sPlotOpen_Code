@@ -187,7 +187,7 @@ grid   <- dgcellstogrid(dggs, header.dggs$cell, frame=F) %>%
       name="# plots", breaks=0:5, labels = c("1", "10", "100",
                                              "1,000", "10,000", "100,000"), option="viridis"))
 
-ggsave("_output/figure1.png", plot=Figure1, width=8, height=6, units="in", dpi=300)
+ggsave("_output/figure1.png", plot=Figure1, width=8, height=4, units="in", dpi=300)
 ```
 
 ## Figure 2 - PCA graph + world map of selected plots
@@ -227,7 +227,7 @@ pca.heatmap <- ggplot(pca12) +
     bins = 100,
     fun = function(x) {
       tmp <- sum(x)
-      #tmp <- ifelse(tmp>50, 50, tmp)
+      tmp <- ifelse(tmp>50, 50, tmp)
       return(tmp)}) +
     
   scale_fill_viridis("Number\nof plots", option = "magma") +
@@ -255,7 +255,7 @@ ABC <- pca.heatmap.build %>%
   group_by(upper, right) %>% 
   sample_n(1) %>% 
   ungroup() %>% 
-  mutate(label=c("A", "B", "C", "D"))
+  mutate(label=c("D", "C", "A", "B"))
   
 
 ### add labels to heatmap
@@ -268,9 +268,9 @@ pca.heatmap2 <- pca.heatmap +
 For each of the selected grid cells, get all plots belonging to that cell, and show their geographical distribution.
 ```{r}
 inset.list <- list()
-for(i in 1:4){
+for(i in c("A", "B", "C", "D")){
   tmp.ABC <- ABC %>% 
-    slice(i)
+    filter(label==i)
   xmin <- tmp.ABC$xmin
   xmax <- tmp.ABC$xmax
   ymin <- tmp.ABC$ymin
@@ -451,43 +451,6 @@ ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dp
 
 ## Figure S2 - PCA world
 
-```{r, eval=f, echo=F}
-## Create world rasters of PCA values and extract plot values by geographic intersection
-## code adapted from @lenjon
-
-# raster at half a degree resolution (cf. 30 arc minute resolution)
-rgeo <- raster(nrows=360, ncols=720, xmn=-180, xmx=180, ymn=-90, ymx=90) 
-rgeo <- disaggregate(rgeo, fact=12) # raster at 2.5 arc minute resolution
-splot.world2$cellID <- cellFromXY(rgeo, cbind(splot.world2$RAST_X, splot.world2$RAST_Y))
-
-posit <- splot.world2$cellID
-temp <- getValues(rgeo)
-
-### create rasters from PCA
-temp[posit] <- pca3$x[, 1]
-PC1_r <- setValues(rgeo, temp)
-temp[posit] <- pca3$x[, 2]
-PC2_r <- setValues(rgeo, temp)
-
-# Compute the density of environmental conditions available at the global scale across the entire bivariate (PC1-PC2) environmental space
-#load("pca3.RData")
-res <- 100 # Setting the number of bins per PCA axis to 100
-reco <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
-PC1_PC2_r <- rasterize(pca3$x[, 1:2], reco, fun="count")
-# Compute the sampling effort (number of vegetation plots) per environmental unit (cell) across the entire bivariate (PC1-PC2) environmental space
-sPlot_reco <- rasterize(plot_data@data[, c("pc1_val", "pc2_val")], reco, fun="count")
-# Put zero values for the empty cells (cf. there is no vegeteation plots available for those environmental conditions: gaps) 
-temp1 <- getValues(PC1_PC2_r)
-temp1[!is.na(temp1)] <- 0
-temp2 <- getValues(sPlot_reco)
-temp2[which(temp1==0&is.na(temp2))] <- 0
-sPlot_reco <- setValues(reco, temp2)
-
-```
-
-
-
-
 ```{r}
 splot.world2.eckert <- SpatialPointsDataFrame(coords=splot.world2 %>% 
                          dplyr::select(RAST_X, RAST_Y), 
@@ -507,11 +470,13 @@ PCA_tbl <- as_tibble(splot.world2.eckert) %>%
       by="RAST_ID") %>%
     mutate(PC0=1:n())
 
-ggpc1 <- w3a + 
+ggpc1 <- w4a + 
   geom_tile(data=PCA_tbl %>% 
+              slice(1:1000) %>% 
               mutate(PC1=ifelse(PC1> 6,  6, PC1)) %>% 
-              mutate(PC1=ifelse(PC1< -6, -6, PC1)) 
-            , aes(x=RAST_X,y=RAST_Y, fill=PC1, color=PC1)) + 
+              mutate(PC1=ifelse(PC1< -6, -6, PC1)), 
+            aes(x=RAST_X,y=RAST_Y, fill=PC1, color=PC1)) + 
+  geom_sf(data = bb, col = "grey20", fill = NA) +
   scale_fill_distiller("PC1", type = "seq", palette = "Spectral", 
                        direction=-1, limits = c(-6.1,6.1), breaks=seq(-6,6, by=3), labels=c("<-6", -3, 0, 3,">6" )) +
   scale_color_distiller("PC1", type = "seq", palette = "Spectral", 
@@ -520,15 +485,18 @@ ggpc1 <- w3a +
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(), 
         axis.text = element_blank(),
-        panel.border = element_blank()) +
-  xlab("") + ylab("")
+        panel.border = element_blank(), 
+        axis.title = element_blank())
 
 
-ggpc2 <- w3a + 
+
+ggpc2 <- w4a + 
   geom_tile(data=PCA_tbl %>% 
+              slice(1:1000) %>% 
               mutate(PC2=ifelse(PC2> 9,  9, PC2)) %>% 
-              mutate(PC2=ifelse(PC2< -6, -6, PC2)) 
-            , aes(x=RAST_X,y=RAST_Y, fill=PC2, color=PC2)) + 
+              mutate(PC2=ifelse(PC2< -6, -6, PC2)), 
+            aes(x=RAST_X,y=RAST_Y, fill=PC2, color=PC2)) + 
+  geom_sf(data = bb, col = "grey20", fill = NA) +
   scale_fill_distiller("PC2", type = "seq", palette = "Spectral", 
                        direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), labels=c("<-6", -3, 0, 3, 6,">9" )) +
   scale_color_distiller("PC2", type = "seq", palette = "Spectral", 
@@ -537,13 +505,95 @@ ggpc2 <- w3a +
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(), 
         axis.text = element_blank(),
-        panel.border = element_blank()) +
-  xlab("") + ylab("")
+        panel.border = element_blank(), 
+        axis.title = element_blank())
+```
 
 
+```{r}
 ggpc.panel <- cowplot::plot_grid(ggpc1, ggpc2, nrow=2, labels=c("a", "b"))
 ggsave(filename="_output/figureS2.png", width=7, height=6, units="in", dpi=300, plot=ggpc.panel)
 ```
+
+
+Test to merge Figure 2 and Figure S2
+
+Test 1 
+```{r}
+library(cowplot)
+varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
+panel.out1 <- 
+  plot_grid(plot_grid(NULL, 
+                      ggpc1 + theme(plot.margin=margin(r=.5, unit="cm")), 
+                      ggpc2 + theme(plot.margin=margin(r=.5, unit="cm")), 
+                      nrow=1, rel_widths = c(0.13,1,1)),
+            plot_grid(
+                pca.heatmap2 + 
+                theme(legend.position=c(0.13, 0.68), 
+                      legend.background = element_blank()) +
+                xlab(paste("PC1 (", varexpl[1], "%)\n cold and seasonal to hot and stable", sep="")) + 
+                ylab(paste("PC2 (", varexpl[2], "%) - dry to wet", sep="")) + 
+                #theme(plot.margin=margin(l=-0.2, r=-0.1, unit="cm")) + 
+                xlim(c(-15,15)) + ylim(c(-5,22)),  
+              plot_grid(plot_grid(inset.list[[1]], inset.list[[4]], NULL, 
+                                  nrow=3, labels = c("A", "D", ""), rel_heights = c(1,1,0.1)),
+                        plot_grid(inset.list[[2]], inset.list[[3]], NULL, 
+                                  nrow=3, labels = c("B", "C", ""), rel_heights = c(1,1,0.1)))), 
+            nrow=2, rel_heights = c(1,1.5), align="v")
+          
+
+ggsave(filename = "_output/pca.panel_world.png", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
+```
+
+Test 2 
+```{r, echo=F, eval=F}
+library(cowplot)
+ggpc1.leg <- get_legend(ggpc1 + 
+                          theme(legend.title = element_blank()))
+ggpc2.leg <- get_legend(ggpc2+ 
+                          theme(legend.title = element_blank()))
+panel.out2 <- plot_grid(pca.heatmap2 + 
+            theme(legend.position=c(0.15, 0.75)) +
+            xlab("PC1\n(cold and seasonal to hot and stable)") + 
+            ylab("PC2 (dry to wet)") + 
+            theme(plot.margin=margin(l=-0.2, r=-0.1, unit="cm")),
+  plot_grid(#column 1
+            plot_grid(
+              ggpc1 + 
+                  theme(legend.position="none"), 
+              inset.list[[1]], 
+              inset.list[[3]], 
+              NULL, ncol=1, rel_heights=c(1,1,1,0.15), labels=c("PC1", "A", "B")),
+            
+            #column 2
+            plot_grid(
+              ggpc1.leg,
+              NULL,
+              NULL, 
+              NULL, ncol=1, rel_heights=c(1,1,1,0.15)),
+            
+            #column 3
+            plot_grid(ggpc2 + 
+                theme(legend.position="none"), 
+              inset.list[[2]], 
+              inset.list[[4]], 
+              NULL, ncol=1, rel_heights=c(1,1,1,0.15), labels=c("PC2", "D", "C")),
+            
+            #column 4
+            plot_grid(
+              ggpc2.leg,
+              NULL,
+              NULL, 
+              NULL, ncol=1, rel_heights=c(1,1,1,0.15)), 
+  
+            ncol=4, align = "hv", 
+            rel_widths=c(1,0.2,1,0.2)),
+  ncol=2, rel_widths = c(.8,1))
+
+
+ggsave(filename = "_output/pca.panel_world2.png", width=9.5, height=5, units = "in", dpi=300, plot=panel.out2)
+```
+
 
 
 
