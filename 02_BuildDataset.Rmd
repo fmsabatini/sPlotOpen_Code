@@ -284,7 +284,6 @@ length(toreplace)
 
 set.seed(9999)
 selected.reserves <- pca.grids %>% 
-  filter(reserve==T) %>% 
   #for each cell, calculate how many reserves would be needed, and how many reserves are available
   left_join(pca.grids %>% 
               group_by(pc_cellID) %>% 
@@ -293,10 +292,22 @@ selected.reserves <- pca.grids %>%
                         reserve.available=sum(reserve, na.rm=T), .groups = 'drop') %>% 
               mutate(reserve.needed=n.first-n.first.usable),
             by=c("pc_cellID")) %>% 
-  filter(reserve.needed>0) %>% 
-  # from each cell where >0 reserves are needed, sample randomly n usable reserves, 
-  # where n is the minimun between the number of reserves needed and reserves available
+  filter(reserve.needed>0) 
 
+# calculate number of plots that cannot be replaced
+selected.reserves %>% 
+  distinct(pc_cellID, .keep_all = T) %>% 
+  filter(reserve.needed>0) %>%  
+  mutate(missing=reserve.needed-reserve.available) %>% 
+  mutate(missing=ifelse(missing<0, 0, missing)) %>% 
+  filter(missing>0) %>% 
+  pull(missing) %>% 
+  summary()
+
+# from each cell where >0 reserves are needed, sample randomly n usable reserves, 
+# where n is the minimun between the number of reserves needed and reserves available
+selected.reserves <- selected.reserves %>% 
+  filter(reserve==T) %>% 
   group_by(pc_cellID) %>% 
   mutate(reserve.available=min(reserve.needed, reserve.available)) %>% 
   sample_n(reserve.available)
@@ -340,8 +351,32 @@ header.oa <- header %>%
 After merging first choice plots and the corresponding reserves, the database contains `r nrow(header.oa)` unique plots, stemming from `r header.oa %>% distinct("GIVD ID") %>% nrow()` databases.
 ```{r}
 # calculate share of unique plots for each resampling, and plots shared across resamplings
-header.oa %>% group_by(Resample_1,Resample_2, Resample_3) %>% summarize(n=n())
+header.oa %>% 
+  group_by(Resample_1,Resample_2, Resample_3) %>% 
+  summarize(n=n())
 ```
+Number of plots for which data on mosses and lichens is available
+```{r}
+header.oa %>% 
+  mutate_at(.vars=vars(`Mosses identified (y/n)`, `Lichens identified (y/n)`),
+            .funs=~factor(.)) %>% 
+  mutate_at(.vars=vars(`Mosses identified (y/n)`, `Lichens identified (y/n)`),
+         .funs=~forcats::fct_recode(., 
+                                     "NA" = ".",
+                                     "TRUE" = "1" ,
+                                     "TRUE" = "y" ,
+                                     "TRUE" = "Y" ,
+                                     "TRUE" = "J" ,
+                                     "FALSE" = "N",
+                                     "FALSE" = "n")) %>% 
+  summarize(n.mosses=sum(`Mosses identified (y/n)`=="TRUE"), 
+            n.lichens=sum(`Lichens identified (y/n)`=="TRUE"))
+
+                    
+  
+```
+
+
 
 Data preparation: adjust header data, select relevant variables, reformat variables into the right classes, correct macroscopic errors.
 ```{r, warning=F}
@@ -355,6 +390,7 @@ header.oa <- header.oa %>%
             ~as.logical(.)) %>% 
   mutate_at(.vars=vars(`Herbs identified (y/n)`, `Mosses identified (y/n)`, `Lichens identified (y/n)`),
             ~ifelse(.=="Y", T, F)) %>% 
+  mutate(`Date of recording`=ifelse(`Date of recording`=="1-1-101", NA, `Date of recording`)) %>% 
   mutate(`Date of recording`=as.Date(`Date of recording`, "%d-%m-%Y") ) %>%
   mutate(CONTINENT=factor(CONTINENT, exclude = " ")) %>% 
   mutate(`Plants recorded`=forcats::fct_explicit_na(f = `Plants recorded`, "Not specified")) %>% 

@@ -367,7 +367,7 @@ ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", 
 ```
 
 
-## Figure S2 - PCA world
+Formerly Figure S2 - PCA world
 
 ```{r}
 splot.world2.eckert <- SpatialPointsDataFrame(coords=splot.world2 %>% 
@@ -460,7 +460,7 @@ panel.out1 <-
             nrow=2, rel_heights = c(1,1.5), align="v")
           
 
-ggsave(filename = "_output/pca.panel_world.png", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
+ggsave(filename = "_output/figure2.png", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
 ```
 
 
@@ -549,7 +549,7 @@ biome.schu <- ggplot() +
 
 #Make a panel with the two plots
 panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, align = "h", rel_widths = c(0.5, .5))
-ggsave(filename="_output/figure2.png", plot = panel.biomes, width = 10, height=4, units="in")
+ggsave(filename="_output/figure3.png", plot = panel.biomes, width = 10, height=4, units="in")
 ```
 
 # Supplementary figures
