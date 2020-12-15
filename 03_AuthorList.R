@@ -3,6 +3,7 @@
 ### This code also formats authors affiliations to Manubot's standards (yaml)
 library(tidyverse)
 library(stringr)
+filter <- dplyr::filter
 
 #### 0. Ancillary functions ####
 # Function 1 - Extract name initials
@@ -173,7 +174,7 @@ optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form response
                       values="Norway"))
 
 ### second batch of opt-ins (mostly from TRY)
-### 02/12/2020
+### 14/12/2020
 optin2 <- openxlsx::read.xlsx("_management/UpdateAffiliations - sPlot (Responses).xlsx", sheet=1)
 colnames(optin2)[16:22] <-  paste0(colnames(optin2)[16:22], "_1")
 colnames(optin2)[23:28] <-  paste0(colnames(optin2)[23:28], "_2")
@@ -182,7 +183,8 @@ optin2 <- optin2 %>%
   rename_all(.funs=~gsub(pattern=".", replacement=" ", x=., fixed=T))
 
 names_to_import <- c('Meelis Pärtel', 'Sophie Gachet', 'Josep Penuela', 'Dirk Nikolaus Karger', 'Gregory Richard Guerin', 'Attila Lengyel', #20.11.2020
-                     'Frederic Lens', 'Débora Vanessa Lingner', "Arindam Banerjee", "Farideh Fazayeli") # update 8.12.2020
+                     'Frederic Lens', 'Débora Vanessa Lingner', "Arindam Banerjee", "Farideh Fazayeli", 
+                     "Hanhuai Shan") # update 14.12.2020
 
 
 optin2.aff <- NULL
@@ -369,7 +371,8 @@ affiliations <- affiliations %>%
                       "Ching-Feng Li", 
                       "Kim Sarah Jacobsen",
                       "Desalegn Wana", 
-                      "Milan Valachovič")) 
+                      "Milan Valachovič", 
+                      "Hjalmar Kühl")) 
 
 
 #### 3. Create metadata.yaml file ####
