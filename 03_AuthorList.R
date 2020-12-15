@@ -403,9 +403,6 @@ lapply(affiliations %>%
 email <- affiliations %>% 
   dplyr::select(name, email) %>% 
   distinct() %>% 
-  ## add additional coauthors
-  bind_rows(data.frame(name="Tarek Hattab", email="tarek.Hattab@ifremer.fr")) %>%
-  bind_rows(data.frame(name="Elizabeth Kearsley", email="elizabeth.kearsley@ugent.be")) %>% 
   mutate(export = paste0(name, " <", email, ">")) %>% 
   dplyr::select(export)
 write_delim(email, file = "_output/Author_email.txt", delim="/t")
