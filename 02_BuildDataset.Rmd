@@ -76,12 +76,28 @@ answers <- answers %>%
                                                         "AF-00-006", "00-00-003", 
                                                         "00-RU-001", "EU-UA-001"),  
                                     values="Yes")) %>% 
-    mutate(`Yes/Conditional/No`=replace(`Yes/Conditional/No`, 
+  mutate(`Yes/Conditional/No`=replace(`Yes/Conditional/No`, 
                                     list=GIVD.ID %in% c("AF-00-008"),  
-                                    values="No")) 
+                                    values="Conditional")) 
 
 head(answers)
 ```
+Mark usable plots from AF-00-008, as last-minute approved.
+```{r, warning=F, message=F}
+#plots usable:
+tava.keywords <- paste0(c("Azagny", "Djouroutou", "GEPRENAF", "Grebo", "Kayan", "Sapo", "sobeya", "Tai-E", "Tai-R"), collapse="|")
+
+tavaplots <- read_delim("_data/Update_TavaApes/tava_header.csv", delim="\t") %>% 
+  dplyr::select(PlotObservationID, `Original nr in database`) %>% 
+  filter(PlotObservationID %in% (header %>% 
+                                   filter(`GIVD ID`=="AF-00-008") %>% 
+                                   pull(PlotObservationID))) %>% 
+  filter(grepl(pattern=tava.keywords, x = `Original nr in database`))
+
+```
+
+
+
 
 Import IDs of first choice plots, i.e. plots resampled in iteration 1. Load redundant list of plots selected in runs 1-3 of resampling (first choice + reserves), with plot-level specification from dataset custodians wheter a plot is usable (i.e., can be released OA) or not. 
 ```{r results="hide", message=F, warning=F}
@@ -99,7 +115,11 @@ usable.plots123 <- readr::read_csv("_output/header.sel.final.csv") %>%
                                         filter(`Yes/Conditional/No`=="Yes") %>% 
                                         pull(GIVD.ID)), 
                        "Yes", Usable)) %>% 
-  mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008"), "No", Usable))  %>% #Hjalmar Kuhl retracted agreement  
+  #Hjalmar Kuhl could only grant access to subset of data
+  mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008") & 
+                         PlotObservationID %in% tavaplots$PlotObservationID, "Yes", Usable))  %>%
+  mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008") & 
+                         !PlotObservationID %in% tavaplots$PlotObservationID, "No", Usable))  %>% 
   distinct()
 
 #compute summary
