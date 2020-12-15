@@ -371,8 +371,7 @@ affiliations <- affiliations %>%
                       "Ching-Feng Li", 
                       "Kim Sarah Jacobsen",
                       "Desalegn Wana", 
-                      "Milan Valachovič", 
-                      "Hjalmar Kühl")) 
+                      "Milan Valachovič")) 
 
 
 #### 3. Create metadata.yaml file ####
