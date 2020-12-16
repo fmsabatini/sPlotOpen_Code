@@ -302,7 +302,14 @@ For each non-usable first choice plot, find a reserve from the same grid cell in
 ```{r}
 toreplace <- pca.grids %>% 
   filter(first.choice==T) %>% 
-  filter(Usable==F) %>% 
+  filter(Usable==F)
+# number of PCA cells from which the plots to replace stem
+(npcacell <- toreplace %>% 
+  distinct(pc_cellID) %>% 
+  nrow())
+# proportion of occupied cells
+npcacell / (pca.grids %>% distinct(pc_cellID) %>% nrow()) 
+toreplace <- toreplace %>% 
   pull(PlotObservationID)
 
 #number of first choice plots needing replacement
@@ -321,14 +328,19 @@ selected.reserves <- pca.grids %>%
   filter(reserve.needed>0)
 
 # calculate number of plots that cannot be replaced
-selected.reserves %>% 
+not_replaceable <- selected.reserves %>% 
   distinct(pc_cellID, .keep_all = T) %>% 
   filter(reserve.needed>0) %>%  
   mutate(missing=reserve.needed-reserve.available) %>% 
   mutate(missing=ifelse(missing<0, 0, missing)) %>% 
   filter(missing>0) %>% 
-  pull(missing) %>% 
-  summary()
+  pull(missing)
+#number of plots that cannot be replaced
+sum(not_replaceable)
+#number of grid cells these plots come from
+length(not_replaceable)
+#distribution of number of not-replaceable plots per PC grid cell
+summary(not_replaceable)
 
 # from each cell where >0 reserves are needed, sample randomly n usable reserves, 
 # where n is the minimun between the number of reserves needed and reserves available
@@ -382,7 +394,7 @@ header.oa %>%
   summarize(n=n())
 ```
 Number of plots for which data on mosses and lichens is available
-```{r}
+```{r, warning=F}
 header.oa %>% 
   mutate_at(.vars=vars(`Mosses identified (y/n)`, `Lichens identified (y/n)`),
             .funs=~factor(.)) %>% 
@@ -395,8 +407,8 @@ header.oa %>%
                                      "TRUE" = "J" ,
                                      "FALSE" = "N",
                                      "FALSE" = "n")) %>% 
-  summarize(n.mosses=sum(`Mosses identified (y/n)`=="TRUE"), 
-            n.lichens=sum(`Lichens identified (y/n)`=="TRUE"))
+  summarize(n.mosses=sum(`Mosses identified (y/n)`=="TRUE", na.rm=T), 
+            n.lichens=sum(`Lichens identified (y/n)`=="TRUE", na.rm=T))
 
                     
   
@@ -1051,8 +1063,11 @@ plotinfo.number <- plotinfo.number %>%
 Recompile and explore plot-level info
 
 ```{r}
-metadata.oa <- plotinfo.raw %>% 
-  dplyr::select(PlotObservationID, Remarks, GUID) %>% 
+metadata.oa <- header.oa %>% 
+  dplyr::select(PlotObservationID) %>% 
+  left_join(plotinfo.raw %>% 
+              dplyr::select(PlotObservationID, Remarks, GUID), 
+            by="PlotObservationID") %>% 
   left_join(plotinfo.dbref, by="PlotObservationID") %>% 
   left_join(plotinfo.author, by="PlotObservationID") %>% 
   left_join(plotinfo.biblio, by="PlotObservationID") %>% 

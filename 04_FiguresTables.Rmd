@@ -732,7 +732,7 @@ table2 <- header.oa %>%
   replace_na(list(Unit.of.Measurement="")) %>% 
   dplyr::select(Variable, `Range/Levels`, 
                 `Unit of Measurement`=Unit.of.Measurement, 
-                `Nr. non-NA Records`=No.records, `Type`=Type.of.variable)
+                `Nr. of plots with information`=No.records, `Type`=Type.of.variable)
 
 write_csv(table2, "_output/Table2_header.csv")
 ```
