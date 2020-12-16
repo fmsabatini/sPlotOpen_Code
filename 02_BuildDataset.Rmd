@@ -318,7 +318,7 @@ selected.reserves <- pca.grids %>%
                         reserve.available=sum(reserve, na.rm=T), .groups = 'drop') %>% 
               mutate(reserve.needed=n.first-n.first.usable),
             by=c("pc_cellID")) %>% 
-  filter(reserve.needed>0) %>% filter(`GIVD ID`=="NA-00-002")
+  filter(reserve.needed>0)
 
 # calculate number of plots that cannot be replaced
 selected.reserves %>% 
@@ -489,7 +489,9 @@ header.oa <- header.oa %>%
     Location_uncertainty = "Location uncertainty (m)", #POINT_X, POINT_Y,
     #sampling design
     Releve_area = "Relevé area (m²)", 
-    #Herbs_identified = "Herbs identified (y/n)", #Mosses_identified="Mosses identified (y/n)", "Lichens identified (y/n)", 
+    #Herbs_identified = "Herbs identified (y/n)", 
+    #Mosses_identified="Mosses identified (y/n)", 
+    #"Lichens identified (y/n)", 
     Plant_recorded = "Plants recorded",
     #topography
     Elevation = "Altitude (m)", 
@@ -676,7 +678,11 @@ header.oa <- header.oa %>%
   dplyr::select(-is_nonforest)
 ```
 
-
+```{r}
+## distribution of plot sizes:
+cut(header.oa$Releve_area, breaks=c(0,10,100,1000, Inf), 
+    labels=c("<10", "10-100", "100-1000", ">=10000")) %>% table()
+```
 
 
 
