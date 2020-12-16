@@ -356,14 +356,15 @@ for(i in c("A", "B", "C", "D")){
 }
 ```
 
-Create panel, joining the labeled heatmap, and the for inset maps.
-```{r}
-library(cowplot)
-panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.list[[2]], nrow=2, labels = c("A", "B")),
-                                               plot_grid(inset.list[[3]], inset.list[[4]], nrow=2, labels = c("C", "D"))), 
-          ncol=2, rel_widths = c(0.35, 0.65), align = "h")
 
-ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
+```{r, echo=F, eval=F}
+#Create panel, joining the labeled heatmap, and the for inset maps.
+# library(cowplot)
+# panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.list[[2]], nrow=2, labels = c("A", "B")),
+#                                                plot_grid(inset.list[[3]], inset.list[[4]], nrow=2, labels = c("C", "D"))), 
+#           ncol=2, rel_widths = c(0.35, 0.65), align = "h")
+# 
+# ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
 ```
 
 
@@ -434,9 +435,7 @@ ggpc2 <- w4a +
 ```
 
 
-Test to merge Figure 2 and Figure S2
-
-Test 1 
+Merge Figure 2 and Figure S2 into a unique panel.
 ```{r}
 library(cowplot)
 varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
@@ -503,13 +502,12 @@ biome.labs <- c('Polar & subpolar' ,'Alpine' ,'Boreal zone' ,'Temperate midlatit
                  'Subtropics - winter\n rain' ,'Tropics - summer rain' ,'Tropics - year-round\n rain')
 
 
-(mypalette <- palette(c(
-'#CAB2D6','#6A3D9A', #violets
-'#A6CEE3','#1F78B4', #blues
-'#FDBF6F','#FF7F00', #orange
-'#B2DF8A','#33A02C', #greens
-'#FB9A99','#E31A1C' #reds
-)))
+(mypalette <- palette(c('#CAB2D6','#6A3D9A', #violets
+                        '#A6CEE3','#1F78B4', #blues
+                        '#FDBF6F','#FF7F00', #orange
+                        '#B2DF8A','#33A02C', #greens
+                        '#FB9A99','#E31A1C' #reds
+                        )))
 
 #myworld <- splot.world2 %>% 
 #           dplyr::select(BIO_01, BIO_12) %>% 

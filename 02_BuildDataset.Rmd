@@ -82,6 +82,7 @@ answers <- answers %>%
 
 head(answers)
 ```
+## Last-minute adjustments to plot selections
 Mark usable plots from AF-00-008, as last-minute approved.
 ```{r, warning=F, message=F}
 #plots usable:
@@ -95,10 +96,12 @@ tavaplots <- read_delim("_data/Update_TavaApes/tava_header.csv", delim="\t") %>%
   filter(grepl(pattern=tava.keywords, x = `Original nr in database`))
 
 ```
+Add additional plots to the usable list, from Luis Cayuela
+```{r}
+luis.sel <- c( 26827, 27251, 27252, 27285, 27286, 27287, 27288, 27289, 27295, 27297)
+```
 
-
-
-
+## Mark Usable plots
 Import IDs of first choice plots, i.e. plots resampled in iteration 1. Load redundant list of plots selected in runs 1-3 of resampling (first choice + reserves), with plot-level specification from dataset custodians wheter a plot is usable (i.e., can be released OA) or not. 
 ```{r results="hide", message=F, warning=F}
 load("_data/plot_sel.RData")
@@ -120,6 +123,8 @@ usable.plots123 <- readr::read_csv("_output/header.sel.final.csv") %>%
                          PlotObservationID %in% tavaplots$PlotObservationID, "Yes", Usable))  %>%
   mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008") & 
                          !PlotObservationID %in% tavaplots$PlotObservationID, "No", Usable))  %>% 
+  #Luis Cayuela additional plots
+  mutate(Usable=ifelse(PlotObservationID %in% luis.sel, "Yes", Usable))  %>% 
   distinct()
 
 #compute summary
@@ -149,6 +154,7 @@ firstchoice <- usable.plots123 %>%
   mutate(Usable=forcats::fct_recode(Usable, "No" = "Unknown")) %>% 
   group_by(first.choice, Usable) %>% 
   summarize(n=n(), .groups = 'drop')
+firstchoice
 ```
 
 ```{r, echo=F}
@@ -312,7 +318,7 @@ selected.reserves <- pca.grids %>%
                         reserve.available=sum(reserve, na.rm=T), .groups = 'drop') %>% 
               mutate(reserve.needed=n.first-n.first.usable),
             by=c("pc_cellID")) %>% 
-  filter(reserve.needed>0) 
+  filter(reserve.needed>0) %>% filter(`GIVD ID`=="NA-00-002")
 
 # calculate number of plots that cannot be replaced
 selected.reserves %>% 
@@ -1706,6 +1712,12 @@ CWM_CWV.oa0 <- DT2.oa %>%
             by="Species") %>% 
   rename_at(.vars=vars(ends_with(".mean")), 
             .funs=~gsub(pattern=".mean", replacement="", x=.))
+
+# number of species with trait information.
+CWM_CWV.oa0 %>% 
+  distinct(Species, .keep_all = T) %>% 
+  filter(!is.na(SLA)) %>% 
+  nrow()
 
 # Calculate coverage for each trait in each plot
 CWM_CWV.oa2 <- CWM_CWV.oa0 %>%
