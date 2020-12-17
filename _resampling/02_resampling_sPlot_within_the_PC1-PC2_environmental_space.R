@@ -243,11 +243,10 @@ plot(res, ncell_samp/ncell_disp, ylim=c(0, 1))
 plot_data <- plot_data@data
 save(plot_data, file="plot_data.RData") # Save the latest version of plot_data
 Sys.setenv("PKG_CXXFLAGS"="-fopenmp") # Set environment variables for other processes called from within R 	
-setwd("~/Functions_TH") # Source C++ fonctions written by Tarek Hattab
-sourceCpp("bray.part.OpenMP.cpp")
-sourceCpp("bray.part.C_RcppParallel.cpp")
-sourceCpp("hcr.C.cpp")
-sourceCpp("cast_binary.cpp")
+sourceCpp("/_functions_TH/bray.part.OpenMP.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/bray.part.C_RcppParallel.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/hcr.C.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/cast_binary.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
 BigBrayPart <- function(bigMat) {
   zeros <- big.matrix(nrow=nrow(bigMat), ncol=nrow(bigMat), init=0, type=typeof(bigMat), shared=FALSE, backingfile=paste("BrayMatrix_",i,sep=""), backingpath=getwd(), descriptorfile=paste("BrayMatrix_",i,".desc",sep=""))
   bray_distance_OpenMP(bigMat@address, zeros@address)
