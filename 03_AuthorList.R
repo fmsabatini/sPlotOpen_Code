@@ -379,7 +379,7 @@ affi.out <- "../_manuscript/content/metadata.yaml" #create empty affiliation fil
 ##populate yaml file with affiliation info
 write_lines(c(
   "---",
-  'title: "sPlotOpen - An environmentally-balanced, open-access, global dataset of vegetation plots"',
+  'title: "sPlotOpen – An environmentally-balanced, open-access, global dataset of vegetation plots"',
   'keywords:',
   '  - vegetation',
   '  - database',
