@@ -200,7 +200,7 @@ fig1.leg <- get_legend(Figure1 +
 fig1_panel <- plot_grid(Figure1a, NULL,
                         Figure1 + 
                           theme(legend.position = "none"), fig1.leg,
-                        nrow=2, ncol=2, byrow = T, labels = c("a","", "b", ""),
+                        nrow=2, ncol=2, byrow = T, #labels = c("a","", "b", ""),
                         rel_widths = c(0.84,0.16))
 ggsave("_output/figure1.png", plot=fig1_panel, width=5.5, height=5, units="in", dpi=300)
 ```

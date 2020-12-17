@@ -619,29 +619,7 @@ header.oa <- header.oa %>% # header.backup %>%
   relocate(Naturalness, .after=ESY)
 
 ```
-### Complete missing values, when possible
-There are 75 entries without continent info
-```{r}
-header.oa <- header.oa %>% 
-  mutate(Continent=as.character(Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Bulgaria", "Denmark", "Greece", "Iceland", 
-                                                            "Italy", "Norway", "Svalbard and Jan Mayen Is", 
-                                                            "Sweden", "United Kingdom", "France", "Spain"), 
-                          "Europe", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country=="Australia", 
-                          "Australia", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Chile", "Colombia"), 
-                          "South America", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("United States", "Canada", "Greenland"), 
-                          "North America", Continent)) %>% 
-  # correct a couple of mistakes
-  mutate(Continent=ifelse(Continent=="Australia", "Oceania", Continent)) %>%
-  mutate(Continent=ifelse(Country=="Papua New Guinea", "Oceania", Continent)) %>% 
-  mutate(Continent=as.factor(Continent)) %>% 
-  # tranform Forest:Sparse veg to T/F
-  mutate_at(.vars=vars(Forest:Sparse_vegetation),
-            .funs = ~as.logical(.) )
-```
+
 
 Fix `is_forest` and `is_nonforest` based on vegetation type. Make the fields consistent with each other.
 ```{r}
@@ -677,12 +655,45 @@ header.oa <- header.oa %>%
                            list= ((is.na(is_forest) | is_forest==F) & (is.na(is_nonforest) | is_nonforest==F)), 
                            values=NA))
 
+
+## Correct known misassigne plots
+indre <- c(977877:978502, 981362:981969) #as requested by Adrian Indreica
+header.oa <- header.oa %>% 
+  mutate(is_forest=ifelse(PlotObservationID %in% indre, 
+                          T, 
+                          is_forest))
 #double check
 header.oa %>% 
   group_by(is_forest, is_nonforest) %>% 
   summarize(n=n())
   
 ```
+
+
+### Complete missing values, when possible
+There are 75 entries without continent info
+```{r}
+header.oa <- header.oa %>% 
+  mutate(Continent=as.character(Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Bulgaria", "Denmark", "Greece", "Iceland", 
+                                                            "Italy", "Norway", "Svalbard and Jan Mayen Is", 
+                                                            "Sweden", "United Kingdom", "France", "Spain"), 
+                          "Europe", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country=="Australia", 
+                          "Australia", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Chile", "Colombia"), 
+                          "South America", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("United States", "Canada", "Greenland"), 
+                          "North America", Continent)) %>% 
+  # correct a couple of mistakes
+  mutate(Continent=ifelse(Continent=="Australia", "Oceania", Continent)) %>%
+  mutate(Continent=ifelse(Country=="Papua New Guinea", "Oceania", Continent)) %>% 
+  mutate(Continent=as.factor(Continent)) %>% 
+  # tranform Forest:Sparse veg to T/F
+  mutate_at(.vars=vars(Forest:Sparse_vegetation),
+            .funs = ~as.logical(.) )
+```
+
 
 The field `is_nonforest` is now redundant. Drop it.
 ```{r}
