@@ -127,6 +127,13 @@ usable.plots123 <- readr::read_csv("_output/header.sel.final.csv") %>%
   mutate(Usable=ifelse(PlotObservationID %in% luis.sel, "Yes", Usable))  %>% 
   distinct()
 
+table(usable.plots123$Usable)
+
+## Plots for which we received no authorizarion
+usable.plots123 %>% filter(Usable != "Yes") %>% nrow() + 99 
+#99 is the number of selected plots in the dataset China_Xinjang, which has been withdrawn from sPlot
+
+
 #compute summary
 summary.sel.final <- usable.plots123 %>% 
   group_by(`GIVD ID`, Dataset, Custodian, `Deputy custodian`) %>% 
