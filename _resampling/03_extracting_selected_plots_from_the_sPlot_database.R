@@ -1,9 +1,6 @@
 #
 # 01 February 2017, updated on 11 December 2020
 #
-getwd()
-dir()
-#
 library(raster)
 library(fBasics)
 library(maptools)
