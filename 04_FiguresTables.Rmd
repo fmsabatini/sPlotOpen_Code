@@ -749,14 +749,14 @@ knitr::kable(table2,
 ```{r}
 out.file <- "_output/91.ManubotTables.md"
 readr::write_lines("## Supplementary Material {.page_break_before}\n", file = out.file)
-readr::write_lines("Table: List of databases contributing sPlotOpen, the open access dataset extracted from the sPlot database. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
+readr::write_lines("Table: List of databases contributing to sPlotOpen, the environmentally-balanced, open-access, global dataset of vegetation plots. Databases are ordered based on their ID in the Global Index of Vegetation Databases (GVID ID). {#tbl:Table1 tag='1'}\n", file = out.file, append=T)
 readr::write_lines("\n \n", file = out.file, append=T)
 kable1 <- kable(table1, format = "markdown")
 ## fix header table 1
 kable1[2] <- "|:------------|:--------------------------------------------|:--------------------|:--------------------|--------:|:--------|"
 readr::write_lines(kable1, file = out.file, append=T)
 readr::write_lines("\n \n \n", file = out.file, append=T)
-readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary), and the number of non-empty (i.e., non NA) records. Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date. {#tbl:Table2 tag='2'}. Additional details on the variables is in Bruelheide et al. (2019) [@doi:10.1111/jvs.12710]. GIVD codes derive from Dengler et al. (2011) [@doi:10.1111/j.1654-1103.2011.01265.x]. Biomes refer to Schultz 2005 [@doi:10.1007/3-540-28527-x], modified to include also the world mountain regions by Körner et al. (2017)[@doi:10.1007/s00035-016-0182-6]. The column ESY refers to the EUNIS Habitat Classification Expert system described in Chytrý et al. (2020) [@doi:10.1111/avsc.12519].\n", file = out.file, append=T)
+readr::write_lines("Table: Description of the variables contained in the ‘header’ matrix, together with their range (if numeric) or possible levels (if nominal or binary) and the number of non-empty (i.e., non NA) records. Variable types can be n - nominal (i.e., qualitative variable), o - ordinal, q - quantitative, or b - binary (i.e., boolean), or d - date {#tbl:Table2 tag='2'}. Additional details on the variables are in Bruelheide et al. (2019) [@doi:10.1111/jvs.12710]. GIVD codes derive from Dengler et al. (2011) [@doi:10.1111/j.1654-1103.2011.01265.x]. Biomes refer to Schultz 2005 [@doi:10.1007/3-540-28527-x], modified to include also the world mountain regions by Körner et al. (2017)[@doi:10.1007/s00035-016-0182-6]. The column ESY refers to the EUNIS Habitat Classification Expert system described in Chytrý et al. (2020) [@doi:10.1111/avsc.12519].\n", file = out.file, append=T)
 kable2 <- kable(table2, format = "markdown")
 ## fix header table 2
 kable2[2] <- "|:---------------------------|:-------------------------------------------------------------|:-------------------|:-----------|:-----|"
