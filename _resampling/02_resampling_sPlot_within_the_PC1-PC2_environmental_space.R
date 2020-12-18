@@ -238,7 +238,7 @@ plot(res, seff_mean)
 plot(res, nbrel_sel)
 plot(res, ncell_samp/ncell_disp, ylim=c(0, 1))
 #
-# Resample sPlot within the PC1-PC2 environmentral space to get an environmentally-balanced subset
+# Resample sPlot within the PC1-PC2 environmental space to get an environmentally-balanced subset
 #
 plot_data <- plot_data@data
 save(plot_data, file="plot_data.RData") # Save the latest version of plot_data
