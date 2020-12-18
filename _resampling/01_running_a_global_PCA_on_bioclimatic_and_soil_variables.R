@@ -77,7 +77,7 @@ grid.arrange(p1, p2, p3, ncol=3, nrow=1)
 multiplot(p1, p2, p3, cols=3)
 dev.off()
 #
-# Plotthe global distribution of PCA axis 1 at 2.5 arc minute resolution
+# Plot the global distribution of PCA axis 1 at 2.5 arc minute resolution
 #
 tiff(filename="PCA_axis1_at_2.5_arc_minute.tiff", width=20, height=12, res=300, unit="cm")
 par(mar=c(4, 4, 4, 1)) 
