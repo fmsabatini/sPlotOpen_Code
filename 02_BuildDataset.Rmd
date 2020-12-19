@@ -18,8 +18,10 @@ output:
 **Timestamp:** `r date()`  
 **Drafted:** Francesco Maria Sabatini  
 **Revised:**  
-**Version:** 1.0
-  
+**Version:** 2.0
+
+*Changes in version 2.0* - Build sPlotOpen based on three resampling runs.  
+<br>
 This report describes how data from the sPlot database have been extracted to build an environmentally-balanced subset. Resampling of plots in the environmental space follows [Bruelheide et al. 2018 NEE](https://www.nature.com/articles/s41559-018-0699-8), and is done elsewhere.  
 All data custodians were contacted individually and asked for permission to make a chunk of their data  open-access. Here I only reported the collated answers. 
   
@@ -31,6 +33,8 @@ library(knitr)
 library(kableExtra)
 library(viridis)
 library(plotbiomes)
+library(colorRamps)
+library(fBasics)
 
 library(raster)
 library(sp)
@@ -41,6 +45,8 @@ library(dggridR)
 # library(rgeos)
 
 library(Taxonstand)
+
+filter <- dplyr::filter
 
 #save temporary files
 write("TMPDIR = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('TMPDIR'), '.Renviron'))
@@ -69,24 +75,64 @@ answers <- answers %>%
                                     list=GIVD.ID %in% c("NA-US-014","AF-00-009", 
                                                         "AF-00-006", "00-00-003", 
                                                         "00-RU-001", "EU-UA-001"),  
-                                    values="Yes"))
+                                    values="Yes")) %>% 
+  mutate(`Yes/Conditional/No`=replace(`Yes/Conditional/No`, 
+                                    list=GIVD.ID %in% c("AF-00-008"),  
+                                    values="Conditional")) 
 
 head(answers)
 ```
+## Last-minute adjustments to plot selections
+Mark usable plots from AF-00-008, as last-minute approved.
+```{r, warning=F, message=F}
+#plots usable:
+tava.keywords <- paste0(c("Azagny", "Djouroutou", "GEPRENAF", "Grebo", "Kayan", "Sapo", "sobeya", "Tai-E", "Tai-R"), collapse="|")
 
+tavaplots <- read_delim("_data/Update_TavaApes/tava_header.csv", delim="\t") %>% 
+  dplyr::select(PlotObservationID, `Original nr in database`) %>% 
+  filter(PlotObservationID %in% (header %>% 
+                                   filter(`GIVD ID`=="AF-00-008") %>% 
+                                   pull(PlotObservationID))) %>% 
+  filter(grepl(pattern=tava.keywords, x = `Original nr in database`))
+
+```
+Add additional plots to the usable list, from Luis Cayuela
+```{r}
+luis.sel <- c( 26827, 27251, 27252, 27285, 27286, 27287, 27288, 27289, 27295, 27297)
+```
+
+## Mark Usable plots
 Import IDs of first choice plots, i.e. plots resampled in iteration 1. Load redundant list of plots selected in runs 1-3 of resampling (first choice + reserves), with plot-level specification from dataset custodians wheter a plot is usable (i.e., can be released OA) or not. 
 ```{r results="hide", message=F, warning=F}
+load("_data/plot_sel.RData")
+sel123 <- plot_data_sel[1:3]
+
 # first choice plot IDs
-sel1 <- readr::read_csv("_data/Resampled1.csv")$x
+#sel1 <- readr::read_csv("_data/Resampled1.csv")$x
 
 # First choice plots + reserves
 usable.plots123 <- readr::read_csv("_output/header.sel.final.csv") %>% 
-  mutate(first.choice=PlotObservationID %in% sel1) %>% 
+  filter(PlotObservationID %in% unique(unlist(sel123))) %>% 
+  mutate(first.choice=PlotObservationID %in% sel123[[1]]) %>% 
   mutate(Usable=ifelse(`GIVD ID` %in% (answers %>% 
                                         filter(`Yes/Conditional/No`=="Yes") %>% 
                                         pull(GIVD.ID)), 
                        "Yes", Usable)) %>% 
+  #Hjalmar Kuhl could only grant access to subset of data
+  mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008") & 
+                         PlotObservationID %in% tavaplots$PlotObservationID, "Yes", Usable))  %>%
+  mutate(Usable=ifelse(`GIVD ID` %in% c("AF-00-008") & 
+                         !PlotObservationID %in% tavaplots$PlotObservationID, "No", Usable))  %>% 
+  #Luis Cayuela additional plots
+  mutate(Usable=ifelse(PlotObservationID %in% luis.sel, "Yes", Usable))  %>% 
   distinct()
+
+table(usable.plots123$Usable)
+
+## Plots for which we received no authorizarion
+usable.plots123 %>% filter(Usable != "Yes") %>% nrow() + 99 
+#99 is the number of selected plots in the dataset China_Xinjang, which has been withdrawn from sPlot
+
 
 #compute summary
 summary.sel.final <- usable.plots123 %>% 
@@ -103,7 +149,7 @@ summary.sel.final <- usable.plots123 %>%
             by="GIVD ID") %>% 
   ### number of first choice plots
   left_join(header %>% 
-              filter(PlotObservationID %in% sel1) %>% 
+              filter(PlotObservationID %in% sel123[[1]]) %>% 
               group_by(`GIVD ID`) %>% 
               summarize(n.sel.plot=n(), .groups = 'drop'),
             by="GIVD ID") %>% 
@@ -115,6 +161,7 @@ firstchoice <- usable.plots123 %>%
   mutate(Usable=forcats::fct_recode(Usable, "No" = "Unknown")) %>% 
   group_by(first.choice, Usable) %>% 
   summarize(n=n(), .groups = 'drop')
+firstchoice
 ```
 
 ```{r, echo=F}
@@ -131,30 +178,30 @@ knitr::kable(summary.sel.final %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
                   full_width = F, position = "center")
 ```
-Out of the `r length(sel1)` plots selected in the first run of the resampling, `r firstchoice %>% filter(first.choice==T & Usable =="Yes") %>% pull(n)` can be used. The remaining `r firstchoice %>% filter(first.choice==T & Usable =="No") %>% pull(n)` require to be replaced.
+Out of the `r length(sel123[[1]])` plots selected in the first run of the resampling, `r firstchoice %>% filter(first.choice==T & Usable =="Yes") %>% pull(n)` can be used. The remaining `r firstchoice %>% filter(first.choice==T & Usable =="No") %>% pull(n)` require to be replaced.
 
-# Replace plots not usable with reserves
-In those cases where we do not have permission to use a plot selected in resampling run #1 [first.choice], we replace it with a reserve belonging to the same cell in the PCA space grid. Reserves correspond to plots selected in resamplings runs #2 or #3, whose use was approved by the respective custodians. Additionally we considered as usable reserves ALL those plots belonging to datasets whose custodian gave us unconditional permission to use their data.  
-PCA is calculated in the environmental space defined by the 30 climatic and soil variables used in Bruelheide et al. 2018 NEE.  
-<br>
+
+# Explore distribution of all plots in PCA space
 Load PCA data
 ```{r}
-## code adapted from @lenjon's 'resampling_2d_JL.R'
-load("_data/plot_data.RData") ##import plot-level pca data
 load("_data/pca3.RData") ### PCA ordination of the world
 path.sPlot <- "/data/sPlot2.0/"
 load(paste(path.sPlot, "splot.world2.RData", sep="/")) ## environmental data of the world at 2.5 res
+```
 
-
+Assign PCA values to selected plots
+```{r}
+## code adapted from @lenjon's 'resampling_2d_JL.R'
+plot_data <- header %>% 
+  filter(PlotObservationID %in% unique(unlist(sel123))) %>% 
+  dplyr::select(PlotObservationID, Longitude, Latitude) %>% 
+  dplyr::filter(!is.na(Latitude))
+  #filter(PlotObservationID %in% sel123[[1]])
+## transform to SpatialPointsDataFrame
 CRSlonlat <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
 coords <- cbind(plot_data$Longitude, plot_data$Latitude)
 coords <- SpatialPoints(coords, proj4string=CRSlonlat)
 plot_data <- SpatialPointsDataFrame(coords, plot_data)#, proj4string=CRSlonlat)
-
-plot_data@data$cellID <- cellFromXY(rgeo, cbind(plot_data@data$POINT_X, plot_data@data$POINT_Y))
-plot_data@data$pc1_val <- extract(PC1_r, coordinates(plot_data))
-plot_data@data$pc2_val <- extract(PC2_r, coordinates(plot_data)) 
-
 
 
 # Create world rasters of PCA values and extract plot values by geographic intersection
@@ -163,99 +210,32 @@ rgeo <- raster(nrows=360, ncols=720, xmn=-180, xmx=180, ymn=-90, ymx=90)
 rgeo <- disaggregate(rgeo, fact=12) # raster at 2.5 arc minute resolution
 splot.world2$cellID <- cellFromXY(rgeo, cbind(splot.world2$RAST_X, splot.world2$RAST_Y))
 
+### create rasters from PCA
 posit <- splot.world2$cellID
 temp <- getValues(rgeo)
 
-### create rasters from PCA
 temp[posit] <- pca3$x[, 1]
 PC1_r <- setValues(rgeo, temp)
 temp[posit] <- pca3$x[, 2]
 PC2_r <- setValues(rgeo, temp)
 
-
-## there are many plots without PCA value (e.g., on little islands, or in coastal area not matching the grid in SOILGRIDS)
-## assign nearest neighbor
-plot_nodata <- plot_data[which(is.na(plot_data@data$pc1_val)),]
-dim(plot_nodata) #plots to assign
-
-## round 1 - 5000 meter buffer
-library(parallel)
-library(doParallel)
-ncores <- 8
-cl <- makeForkCluster(ncores, outfile="" )
-registerDoParallel(cl)
-
-system.time({
-pc_5000 <- foreach(i=seq_along(plot_nodata), .packages=c('raster'), .combine=rbind) %dopar% { 
-  pc_5000 <- extract(stack(PC1_r, PC2_r), plot_nodata[i,], buffer=5000, fun=function(x){median(x, na.rm=T)})
-}
-})
-"user  system elapsed 
- 37.454  12.041 305.120 "
-## rearrange output and extract unassigned plots
-plot_data@data <- plot_data@data %>% 
-  left_join(plot_nodata@data %>% 
-              dplyr::select(PlotObservationID) %>% 
-              bind_cols(pc_5000 %>% 
-                          as_tibble()), 
-            by="PlotObservationID") %>% 
-  mutate(pc1_val=coalesce(pc1_val, layer.1)) %>% 
-  mutate(pc2_val=coalesce(pc2_val, layer.2)) %>% 
-  dplyr::select(-layer.1, -layer.2)
-plot_nodata <- plot_data[which(is.na(plot_data@data$pc1_val)),]
-dim(plot_nodata) #9810 plots still to assign
-
-## round 2 - 20000 meter buffer
-system.time({
-pc_20000 <- foreach(i=seq_along(plot_nodata), .packages=c('raster'), .combine=rbind) %dopar% { 
-  pc_20000 <- extract(stack(PC1_r, PC2_r), plot_nodata[i,], buffer=20000, fun=function(x){median(x, na.rm=T)})
-}
-})
-"user  system elapsed 
-  9.931   4.970  78.776"
-stopCluster(cl)
-## rearrange output and extract unassigned plots
-plot_data@data <- plot_data@data %>% 
-  left_join(plot_nodata@data %>% 
-              dplyr::select(PlotObservationID) %>% 
-              bind_cols(pc_20000 %>% 
-                          as_tibble()), 
-            by="PlotObservationID") %>% 
-  mutate(pc1_val=coalesce(pc1_val, layer.1)) %>% 
-  mutate(pc2_val=coalesce(pc2_val, layer.2)) %>% 
-  dplyr::select(-layer.1, -layer.2)
-plot_nodata <- plot_data[which(is.na(plot_data@data$pc1_val)),]
-dim(plot_nodata) #2591 plots remain unassigned
-
-## round 3 - 50000 meter buffer
-system.time({
-pc_50000 <- foreach(i=seq_along(plot_nodata), .packages=c('raster'), .combine=rbind) %dopar% { 
-  pc_50000 <- extract(stack(PC1_r, PC2_r), plot_nodata[i,], buffer=50000, fun=function(x){median(x, na.rm=T)})
-}
-})
-
-plot_data@data <- plot_data@data %>% 
-  left_join(plot_nodata@data %>% 
-              dplyr::select(PlotObservationID) %>% 
-              bind_cols(pc_50000 %>% 
-                          as_tibble()), 
-            by="PlotObservationID") %>% 
-  mutate(pc1_val=coalesce(pc1_val, layer.1)) %>% 
-  mutate(pc2_val=coalesce(pc2_val, layer.2)) %>% 
-  dplyr::select(-layer.1, -layer.2)
-plot_nodata <- plot_data[which(is.na(plot_data@data$pc1_val)),]
-dim(plot_nodata) #394 plots remain unassigned
+plot_data@data$cellID <- cellFromXY(rgeo, 
+                                    cbind(plot_data@data$Longitude, plot_data@data$Latitude))
+plot_data@data$pc1_val <- extract(PC1_r, coordinates(plot_data))
+plot_data@data$pc2_val <- extract(PC2_r, coordinates(plot_data)) 
 
 
 # Compute the density of environmental conditions available at the global scale across the entire bivariate (PC1-PC2) environmental space
 res <- 100 # Setting the number of bins per PCA axis to 100
-reco <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
+reco <- raster(nrows=res, ncols=res, 
+               xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), 
+               ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
 PC1_PC2_r <- rasterize(pca3$x[, 1:2], reco, fun="count")
 plot_data <- plot_data@data
 plot_data$pc_cellID <- cellFromXY(reco, cbind(plot_data$pc1_val, plot_data$pc2_val))
 
 # Compute the sampling effort (number of vegetation plots) per environmental unit (cell) across the entire bivariate (PC1-PC2) environmental space
-sPlot_reco <- rasterize(header.oa[, c("SoilClim_PC1", "SoilClim_PC2")], reco, fun="count")
+sPlot_reco <- rasterize(plot_data[, c("pc1_val", "pc2_val")], reco, fun="count")
 # Put zero values for the empty cells (cf. there is no vegeteation plots available for those environmental conditions: gaps) 
 temp1 <- getValues(PC1_PC2_r)
 temp1[!is.na(temp1)] <- 0
@@ -264,14 +244,9 @@ temp2[which(temp1==0&is.na(temp2))] <- 0
 sPlot_reco <- setValues(reco, temp2)
 ```
 
-
-```{r, echo=F, eval=F}
-### temporary code,
-library(colorRamps)
-library(fBasics)
-# Plotting the number of sPlot relevés for each cell of the PC1-PC2 space
-#
-png(filename="Sampling_effort_PC1-PC2.png", width=12, height=12, res=300, unit="cm")
+Plotting the number of sPlot relevés for each cell of the PC1-PC2 space
+```{r, fig.width=5, fig.height=5, fig.align="center", warning=F, message=F, cache=T}
+#png(filename="Sampling_effort_PC1-PC2.png", width=12, height=12, res=300, unit="cm")
 par(mar=c(4, 4, 4, 1)) 
 plot(log(sPlot_reco+1), asp=0, col=c("grey", rev(divPalette(n=99, name="RdBu"))), xlab="PC1 (cold and seasonal to hot and stable)", ylab="PC2 (dry to wet)", legend=F)
 plot(log(sPlot_reco+1), asp=0, col=c("grey", rev(divPalette(n=99, name="RdBu"))), 
@@ -280,32 +255,37 @@ plot(log(sPlot_reco+1), asp=0, col=c("grey", rev(divPalette(n=99, name="RdBu")))
                     labels=round(exp(seq(0, log(maxValue(sPlot_reco)+1), length.out=5))),  
                     cex.axis=0.6), 
      legend.args=list(text="N", side=3, font=2, line=0, cex=0.8))
-title(main="Number of sPlot relevés \nper environmental cell (log scale)")
-dev.off()
-#
-
+title(main="Number of sPlotOpen relevés \nper environmental cell (log scale)")
+#dev.off()
 ```
+
+
+# Replace plots not usable with reserves
+In those cases where we do not have permission to use a plot selected in resampling run #1 [first.choice], we replace it with a reserve belonging to the same cell in the PCA space grid. Reserves correspond to plots selected in resamplings runs #2 or #3, whose use was approved by the respective custodians. ~~Additionally we considered as usable reserves ALL those plots belonging to datasets whose custodian gave us unconditional permission to use their data.~~  
+PCA is calculated in the environmental space defined by the 30 climatic and soil variables used in Bruelheide et al. 2018 NEE.  
+<br>
 
 
 ```{r}
 pca.grids <- plot_data %>% 
   filter(PlotObservationID %in% header$PlotObservationID) %>% 
+  #filter(PlotObservationID %in% unique(unlist(sel123))) %>% 
   #attach GIVD codes 
   left_join(header %>% 
-              distinct(`GIVD ID`,Dataset), 
-            by="Dataset") %>% 
+              distinct(PlotObservationID, `GIVD ID`,Dataset), 
+            by="PlotObservationID") %>% 
   dplyr::select(PlotObservationID,`GIVD ID`, Dataset, 
                 pc_cellID, pc1_val, pc2_val) %>% 
   as_tibble() %>% 
   #Attach info on first choice, reserve and usable plots
-  mutate(first.choice=PlotObservationID %in% sel1) %>% 
+  mutate(first.choice=PlotObservationID %in% sel123[[1]]) %>% 
   left_join(usable.plots123 %>% 
               dplyr::select(PlotObservationID, Usable) %>% 
               mutate(Usable=Usable=="Yes"), 
             by="PlotObservationID") %>% 
-  mutate(reserve= (!PlotObservationID %in% sel1) & Usable==T) %>% 
-  #Consider as usable reserves ALL those plots belonging to datasets whose custodian gave us
-  # unconditional permission to use the data
+  mutate(reserve= (!PlotObservationID %in% sel123[[1]]) & Usable==T) %>% 
+#  #Consider as usable reserves ALL those plots belonging to datasets whose custodian gave us
+#  # unconditional permission to use the data
   mutate(Usable=replace(Usable, 
                         list= ( is.na(Usable) & 
                                  `GIVD ID` %in% (answers %>% 
@@ -317,7 +297,8 @@ pca.grids <- plot_data %>%
                                  `GIVD ID` %in% (answers %>% 
                                      filter(`Yes/Conditional/No`=="Yes") %>% 
                                      pull(GIVD.ID))), 
-                        values=T))
+                        values=T)) %>% 
+  filter(!is.na(Usable))
 
 head(pca.grids %>% 
        dplyr::select(-pc1_val, -pc2_val))
@@ -328,7 +309,14 @@ For each non-usable first choice plot, find a reserve from the same grid cell in
 ```{r}
 toreplace <- pca.grids %>% 
   filter(first.choice==T) %>% 
-  filter(Usable==F) %>% 
+  filter(Usable==F)
+# number of PCA cells from which the plots to replace stem
+(npcacell <- toreplace %>% 
+  distinct(pc_cellID) %>% 
+  nrow())
+# proportion of occupied cells
+npcacell / (pca.grids %>% distinct(pc_cellID) %>% nrow()) 
+toreplace <- toreplace %>% 
   pull(PlotObservationID)
 
 #number of first choice plots needing replacement
@@ -336,7 +324,6 @@ length(toreplace)
 
 set.seed(9999)
 selected.reserves <- pca.grids %>% 
-  filter(reserve==T) %>% 
   #for each cell, calculate how many reserves would be needed, and how many reserves are available
   left_join(pca.grids %>% 
               group_by(pc_cellID) %>% 
@@ -345,9 +332,27 @@ selected.reserves <- pca.grids %>%
                         reserve.available=sum(reserve, na.rm=T), .groups = 'drop') %>% 
               mutate(reserve.needed=n.first-n.first.usable),
             by=c("pc_cellID")) %>% 
-  filter(reserve.needed>0) %>% 
-  # from each cell where >0 reserves are needed, sample randomly n usable reserves, 
-  # where n is the minimun between the number of reserves needed and reserves available
+  filter(reserve.needed>0)
+
+# calculate number of plots that cannot be replaced
+not_replaceable <- selected.reserves %>% 
+  distinct(pc_cellID, .keep_all = T) %>% 
+  filter(reserve.needed>0) %>%  
+  mutate(missing=reserve.needed-reserve.available) %>% 
+  mutate(missing=ifelse(missing<0, 0, missing)) %>% 
+  filter(missing>0) %>% 
+  pull(missing)
+#number of plots that cannot be replaced
+sum(not_replaceable)
+#number of grid cells these plots come from
+length(not_replaceable)
+#distribution of number of not-replaceable plots per PC grid cell
+summary(not_replaceable)
+
+# from each cell where >0 reserves are needed, sample randomly n usable reserves, 
+# where n is the minimun between the number of reserves needed and reserves available
+selected.reserves <- selected.reserves %>% 
+  filter(reserve==T) %>% 
   group_by(pc_cellID) %>% 
   mutate(reserve.available=min(reserve.needed, reserve.available)) %>% 
   sample_n(reserve.available)
@@ -357,7 +362,7 @@ selected.reserves <- pca.grids %>%
 knitr::kable(selected.reserves %>% 
                dplyr::select(-pc1_val, -pc2_val) %>% 
                ungroup() %>%
-               arrange(cellID) %>% 
+               arrange(pc_cellID) %>% 
                slice(1:20),
              caption="Example of selected reserves [first 20 rows shown]") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
@@ -372,17 +377,51 @@ By selecting plots within the same cell in the PCA grid, we can only replace `r 
 ```{r}
 header.oa <- header %>% 
   filter(PlotObservationID %in% (usable.plots123 %>%
-                                   filter(first.choice==T) %>% 
+                                   #filter(first.choice==T) %>% 
                                    filter(Usable=="Yes") %>% 
-                                     pull(PlotObservationID))) %>% 
-  bind_rows(header %>% 
-              filter(PlotObservationID %in% selected.reserves$PlotObservationID)) %>% 
+                                     pull(PlotObservationID)) #|
+         # PlotObservationID %in% (selected.reserves %>% 
+          #                           pull(PlotObservationID))
+           ) %>% 
   left_join(pca.grids %>% 
               dplyr::select(PlotObservationID, SoilClim_PC1=pc1_val, SoilClim_PC2=pc2_val, pc_cellID), 
-            by="PlotObservationID")
+            by="PlotObservationID") %>% 
+  mutate(Resample_1=PlotObservationID %in% sel123[[1]]) %>% 
+  mutate(Resample_2=PlotObservationID %in% sel123[[2]]) %>% 
+  mutate(Resample_3=PlotObservationID %in% sel123[[3]]) %>% 
+  mutate(Resample_1_consensus=ifelse(PlotObservationID %in% selected.reserves$PlotObservationID, 
+                                     TRUE, 
+                                     Resample_1))
+```
+After merging first choice plots and the corresponding reserves, the database contains `r nrow(header.oa)` unique plots, stemming from `r header.oa %>% distinct("GIVD ID") %>% nrow()` databases.
+```{r}
+# calculate share of unique plots for each resampling, and plots shared across resamplings
+header.oa %>% 
+  group_by(Resample_1,Resample_2, Resample_3) %>% 
+  summarize(n=n())
+```
+Number of plots for which data on mosses and lichens is available
+```{r, warning=F}
+header.oa %>% 
+  mutate_at(.vars=vars(`Mosses identified (y/n)`, `Lichens identified (y/n)`),
+            .funs=~factor(.)) %>% 
+  mutate_at(.vars=vars(`Mosses identified (y/n)`, `Lichens identified (y/n)`),
+         .funs=~forcats::fct_recode(., 
+                                     "NA" = ".",
+                                     "TRUE" = "1" ,
+                                     "TRUE" = "y" ,
+                                     "TRUE" = "Y" ,
+                                     "TRUE" = "J" ,
+                                     "FALSE" = "N",
+                                     "FALSE" = "n")) %>% 
+  summarize(n.mosses=sum(`Mosses identified (y/n)`=="TRUE", na.rm=T), 
+            n.lichens=sum(`Lichens identified (y/n)`=="TRUE", na.rm=T))
+
+                    
   
 ```
-After merging first choice plots and the corresponding reserves, the database contains `r nrow(header.oa)` plots, stemming from `r header.oa %>% distinct("GIVD ID") %>% nrow()` databases.
+
+
 
 Data preparation: adjust header data, select relevant variables, reformat variables into the right classes, correct macroscopic errors.
 ```{r, warning=F}
@@ -396,6 +435,7 @@ header.oa <- header.oa %>%
             ~as.logical(.)) %>% 
   mutate_at(.vars=vars(`Herbs identified (y/n)`, `Mosses identified (y/n)`, `Lichens identified (y/n)`),
             ~ifelse(.=="Y", T, F)) %>% 
+  mutate(`Date of recording`=ifelse(`Date of recording`=="1-1-101", NA, `Date of recording`)) %>% 
   mutate(`Date of recording`=as.Date(`Date of recording`, "%d-%m-%Y") ) %>%
   mutate(CONTINENT=factor(CONTINENT, exclude = " ")) %>% 
   mutate(`Plants recorded`=forcats::fct_explicit_na(f = `Plants recorded`, "Not specified")) %>% 
@@ -451,7 +491,7 @@ header.oa <- header.oa %>%
                                      list=`Date of recording`> as.Date('2016-01-01'), 
                                      NA)) %>% 
   # round SoilClim PCA
-  mutate_at(.vars=vars(PC1, PC2), 
+  mutate_at(.vars=vars(SoilClim_PC1, SoilClim_PC2), 
             .funs=list(~round(., 3))) %>% 
   # Rename fields
   dplyr::select(
@@ -468,7 +508,9 @@ header.oa <- header.oa %>%
     Location_uncertainty = "Location uncertainty (m)", #POINT_X, POINT_Y,
     #sampling design
     Releve_area = "Relevé area (m²)", 
-    #Herbs_identified = "Herbs identified (y/n)", #Mosses_identified="Mosses identified (y/n)", "Lichens identified (y/n)", 
+    #Herbs_identified = "Herbs identified (y/n)", 
+    #Mosses_identified="Mosses identified (y/n)", 
+    #"Lichens identified (y/n)", 
     Plant_recorded = "Plants recorded",
     #topography
     Elevation = "Altitude (m)", 
@@ -505,7 +547,12 @@ header.oa <- header.oa %>%
     Height_herbs_highest = "Maximum height herbs (cm)", 
     #environment PCA
     SoilClim_PC1, 
-    SoilClim_PC2)
+    SoilClim_PC2, 
+    #Resampling
+    Resample_1,
+    Resample_2, 
+    Resample_3, 
+    Resample_1_consensus)
 ```
 
 
@@ -525,7 +572,7 @@ header.oa <- header.oa %>%
 ```
 
 ### Formations
-For those plots being classified based on the EUNIS codes, we used a cross-link table to use EUNIS to  assign vegetation types and naturalness, but only when these columns are empty. 
+For those plots being classified based on the EUNIS codes, we used a cross-link table to use EUNIS to assign vegetation types and naturalness, but only when these columns are empty. 
 ```{r}
 eunis.key <- xlsx::read.xlsx("/data/sPlot/users/Francesco/sPlot3/_input/EUNIS_WFT.xlsx", 
                        sheetIndex = "Sheet1", endRow = 246) %>% 
@@ -579,29 +626,7 @@ header.oa <- header.oa %>% # header.backup %>%
   relocate(Naturalness, .after=ESY)
 
 ```
-### Complete missing values, when possible
-There are 302 entries without continent info
-```{r}
-header.oa <- header.oa %>% 
-  mutate(Continent=as.character(Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Bulgaria", "Denmark", "Greece", "Iceland", 
-                                                            "Italy", "Norway", "Svalbard and Jan Mayen Is", 
-                                                            "Sweden", "United Kingdom", "France"), 
-                          "Europe", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country=="Australia", 
-                          "Australia", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Chile", "Colombia"), 
-                          "South America", Continent)) %>% 
-  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("United States", "Canada", "Greenland"), 
-                          "North America", Continent)) %>% 
-  # correct a couple of mistakes
-  mutate(Continent=ifelse(Continent=="Australia", "Oceania", Continent)) %>%
-  mutate(Continent=ifelse(Country=="Papua New Guinea", "Oceania", Continent)) %>% 
-  mutate(Continent=as.factor(Continent)) %>% 
-  # tranform Forest:Sparse veg to T/F
-  mutate_at(.vars=vars(Forest:Sparse_vegetation),
-            .funs = ~as.logical(.) )
-```
+
 
 Fix `is_forest` and `is_nonforest` based on vegetation type. Make the fields consistent with each other.
 ```{r}
@@ -637,6 +662,13 @@ header.oa <- header.oa %>%
                            list= ((is.na(is_forest) | is_forest==F) & (is.na(is_nonforest) | is_nonforest==F)), 
                            values=NA))
 
+
+## Correct known misassigne plots
+indre <- c(977877:978502, 981362:981969) #as requested by Adrian Indreica
+header.oa <- header.oa %>% 
+  mutate(is_forest=ifelse(PlotObservationID %in% indre, 
+                          T, 
+                          is_forest))
 #double check
 header.oa %>% 
   group_by(is_forest, is_nonforest) %>% 
@@ -644,13 +676,43 @@ header.oa %>%
   
 ```
 
+
+### Complete missing values, when possible
+There are 75 entries without continent info
+```{r}
+header.oa <- header.oa %>% 
+  mutate(Continent=as.character(Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Bulgaria", "Denmark", "Greece", "Iceland", 
+                                                            "Italy", "Norway", "Svalbard and Jan Mayen Is", 
+                                                            "Sweden", "United Kingdom", "France", "Spain"), 
+                          "Europe", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country=="Australia", 
+                          "Australia", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("Chile", "Colombia"), 
+                          "South America", Continent)) %>% 
+  mutate(Continent=ifelse(is.na(Continent) & Country %in% c("United States", "Canada", "Greenland"), 
+                          "North America", Continent)) %>% 
+  # correct a couple of mistakes
+  mutate(Continent=ifelse(Continent=="Australia", "Oceania", Continent)) %>%
+  mutate(Continent=ifelse(Country=="Papua New Guinea", "Oceania", Continent)) %>% 
+  mutate(Continent=as.factor(Continent)) %>% 
+  # tranform Forest:Sparse veg to T/F
+  mutate_at(.vars=vars(Forest:Sparse_vegetation),
+            .funs = ~as.logical(.) )
+```
+
+
 The field `is_nonforest` is now redundant. Drop it.
 ```{r}
 header.oa <- header.oa %>% 
   dplyr::select(-is_nonforest)
 ```
 
-
+```{r}
+## distribution of plot sizes:
+cut(header.oa$Releve_area, breaks=c(0,10,100,1000, Inf), 
+    labels=c("<10", "10-100", "100-1000", ">=10000")) %>% table()
+```
 
 
 
@@ -674,7 +736,7 @@ sPlot stems from the work of thousands of vegetation scientists. Much of this wo
 Plot level info imported from Turboveg. Before importing, need to seek and replace all quotation and double quotation marks, and escape them. Done via LINUX console
 ```{bash, engine.opts='-l', eval=F}
 #not sure it works from markdown, works from console,though
-sed "s/'/\\'/g" _data/PlotLevelInfo/TV3_PlotLevelInfo_Export.csv >  _data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test.csv
+sed "s/'/\\'/g" _data/PlotLevelInfo/TV3_PlotLevelInfo_Export_123.csv >  _data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test.csv
 sed 's/"/\\"/g' _data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test.csv >  _data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test2.csv
 ```
 
@@ -726,6 +788,8 @@ Data from Turobevg come with a dictionary of references. These references, howev
 #Import biblioreference dictionary from TurboVeg3
 Biblioref.raw <- read_delim("_data/PlotLevelInfo/BiblioReference_v2.txt", 
                             delim="\t", col_names = c("PlotObservationID", "Fullref"))
+Biblioref.raw_123 <- read_delim("_data/PlotLevelInfo/BiblioReference_v123_additional.txt", 
+                            delim="\t", col_names = c("PlotObservationID", "Fullref"))
 ```
 These bibliographic references are then parsed using the library [anystyle](https://github.com/inukshuk/anystyle), in ruby. Yet, the output needs some additional cleaning first.  
 Below some code which might help for the scope, which might benefit from further refinements.  
@@ -739,6 +803,7 @@ Do some string modification before parsing with anystyle. Need to convert all wo
 }
 
 br1 <- Biblioref.raw %>% 
+  #bind_rows(Biblioref.raw_123)
   distinct(Fullref) %>% 
   arrange(Fullref)
 for(i in 1:nrow(br1)){
@@ -763,7 +828,7 @@ if(any(file.exists(filenames))){
   #Delete file if it exists
   file.remove(filenames)
 }
-
+## sink references to format into .txt files in batches of 300
 for(i in 1:nchunks){
   tmp <- br1$Fullref[splitted[[i]]]
   write_lines(tmp, paste0("_data/PlotLevelInfo/Ref_to_parse_", i, ".txt"), )
@@ -772,13 +837,22 @@ for(i in 1:nchunks){
 These references were submitted to the [anystyle](https://github.com/inukshuk/anystyle)'s web interface. Output was exported to bibTex.  
 Reimport and match.
 ```{r, message=F, warning=F}
-filenames <- paste0("_data/PlotLevelInfo/anystyle_", 1:nchunks, ".bib")
+filenames <- paste0("_data/PlotLevelInfo/anystyle_", 1:11, ".bib")
 bib.list <- lapply(filenames, bib2df)
 bib.df <- bind_rows(bib.list) %>% 
    select_if(function(x) !(all(is.na(x)) | all(x=="")))
 br1.out <- bind_cols(Biblioref.raw %>% 
                    distinct(Fullref) %>% 
                    arrange(Fullref), bib.df)
+filenames <- paste0("_data/PlotLevelInfo/anystyle_123_", 1:5, ".bib")
+bib.list <- lapply(filenames, bib2df)
+bib.df <- bind_rows(bib.list) %>% 
+   select_if(function(x) !(all(is.na(x)) | all(x=="")))
+br1.out.123 <- bind_cols(Biblioref.raw_123 %>% 
+                   distinct(Fullref) %>% 
+                   arrange(Fullref), bib.df)
+
+
 ```
 Parse additional references not stored in TURBOVEG3's dictionary
 ```{r}
@@ -836,8 +910,11 @@ rename.duplicates <- function(x){
 }
 
 #fix duplicated bibtex keys
-reference.oa <- bind_rows(br1.out, br2.out, bib.db) %>% 
-  distinct()
+reference.oa <- bind_rows(br1.out, br1.out.123, br2.out, bib.db) %>% 
+  distinct() %>% 
+  filter((Fullref %in% Biblioref.raw$Fullref  | 
+            Fullref %in% Biblioref.raw_123$Fullref | 
+            BIBTEXKEY %in% bib.db$BIBTEXKEY))
 reference.oa$BIBTEXKEY <- rename.duplicates(reference.oa$BIBTEXKEY)
 ```
 The reference list contains `r nrow(reference.oa)` parsed references.
@@ -1004,8 +1081,11 @@ plotinfo.number <- plotinfo.number %>%
 Recompile and explore plot-level info
 
 ```{r}
-metadata.oa <- plotinfo.raw %>% 
-  dplyr::select(PlotObservationID, Remarks, GUID) %>% 
+metadata.oa <- header.oa %>% 
+  dplyr::select(PlotObservationID) %>% 
+  left_join(plotinfo.raw %>% 
+              dplyr::select(PlotObservationID, Remarks, GUID), 
+            by="PlotObservationID") %>% 
   left_join(plotinfo.dbref, by="PlotObservationID") %>% 
   left_join(plotinfo.author, by="PlotObservationID") %>% 
   left_join(plotinfo.biblio, by="PlotObservationID") %>% 
@@ -1063,7 +1143,7 @@ sPlotOpen_citation <- function(IDs, level=c("plot", "database"), out.file){
 ### Show Output
 Example of using the function `sPlotOpen_citation`
 ```{r}
-sel.plots <- sample(header.oa$PlotObservationID, 100)
+sel.plots <- sample(header.oa$PlotObservationID, 100, replace = F)
 filename <- "_output/sPlot_BibText.bib"
 sPlotOpen_citation(IDs=sel.plots, level="database", out.file = filename)
 
@@ -1671,6 +1751,12 @@ CWM_CWV.oa0 <- DT2.oa %>%
             by="Species") %>% 
   rename_at(.vars=vars(ends_with(".mean")), 
             .funs=~gsub(pattern=".mean", replacement="", x=.))
+
+# number of species with trait information.
+CWM_CWV.oa0 %>% 
+  distinct(Species, .keep_all = T) %>% 
+  filter(!is.na(SLA)) %>% 
+  nrow()
 
 # Calculate coverage for each trait in each plot
 CWM_CWV.oa2 <- CWM_CWV.oa0 %>%
