@@ -426,6 +426,8 @@ header.oa %>%
 Data preparation: adjust header data, select relevant variables, reformat variables into the right classes, correct macroscopic errors.
 ```{r, warning=F}
 header.oa <- header.oa %>% 
+# MEMO - releve area of SA-BR-002 is always 1000
+  #TO ADD
     #reformat and rename
   mutate_at(.vars=vars(`Altitude (m)`, `Aspect (°)`, `Slope (°)`), 
             ~as.numeric(.)) %>% 
@@ -1697,6 +1699,102 @@ DT2.oa <- DT2.oa %>%
   arrange(PlotObservationID, Species)
 dim(DT2.oa)
 ```
+
+
+#### SA-BR-002 - Brazil forests
+Replace with data received from the custodians in 2019. This data contain less unidentified species.
+```{r}
+#Import data from sPlot 3.0
+load("/data/sPlot/releases/sPlot3.0/header_sPlot3.0.RData")
+header3.0 <- header
+rm(header)
+```
+Create key to match IDs between sPlot 2.1 and 3.0
+```{r}
+## create list of PlotIDs for Brazilian plots in sPlotOpen
+braz.oa.pid <- header.oa %>% 
+  filter(GIVD_ID=="SA-BR-002") %>% 
+  pull(PlotObservationID)
+## original plot numbers in database 
+braz.oa.nr <- metadata.oa %>% 
+  filter(PlotObservationID %in% braz.oa.pid) %>% 
+  pull(Original_nr_in_database)
+
+## data from sPlot 3.0 to replace
+# original_nr_in_database with plotObservationID matching to sPlot 3.0
+sPlot3.IDs <- read_delim("_data/Update_Brazil/Update_Brazil_IDs_header.csv", delim="\t") 
+
+header.braz.new <- header3.0 %>% 
+  filter(`GIVD ID`=="SA-BR-002") %>% 
+  left_join(sPlot3.IDs %>% 
+              dplyr::select(PlotObservationID, 
+                            Original_nr_in_database=`Original nr in database`),
+            by="PlotObservationID") %>% 
+  filter(Original_nr_in_database %in% braz.oa.nr)
+
+#Create PlotID keys
+ID.key <- metadata.oa %>% 
+  filter(PlotObservationID %in% braz.oa.pid) %>% 
+  dplyr::select(PlotObservationID21 = PlotObservationID, Original_nr_in_database) %>% 
+  left_join(header.braz.new %>% 
+              dplyr::select(PlotObservationID30 = PlotObservationID,
+                            Original_nr_in_database), 
+                            by="Original_nr_in_database") %>% 
+  as_tibble()
+
+head(ID.key)
+```
+
+Extract plot observations from DT in sPlot 3.0 to replace those in DT.oa
+```{r}
+## DT new 
+load("/data/sPlot/releases/sPlot3.0/DT_sPlot3.0.RData")
+DT3.0 <- DT2 %>% 
+  filter(PlotObservationID %in% (ID.key %>% pull(PlotObservationID30)))
+rm(DT2)
+DT3.0.braz <- DT3.0 %>% 
+  left_join(ID.key, by=c("PlotObservationID"="PlotObservationID30")) %>% 
+  filter(Original_nr_in_database %in% braz.oa.nr) %>% 
+  dplyr::select(-PlotObservationID) %>% 
+  dplyr::select(PlotObservationID=PlotObservationID21,
+                Species,
+                Original_species=Species_original, 
+                Original_abundance=Abundance,
+                Abundance_scale=Ab_scale,
+                Relative_cover) %>% 
+  filter(Original_species != "NI species") %>% 
+  as_tibble()
+
+nrow(DT3.0.braz)
+```
+Replace entries in `DT2.oa`
+```{r}
+DT2.oa <- DT2.oa %>% 
+  filter(!PlotObservationID %in% braz.oa.pid) %>% 
+  bind_rows(DT3.0.braz) %>% 
+  arrange(PlotObservationID, Species)
+dim(DT2.oa)
+```
+Add `releve_area` to Brazilian entries in `header.oa`
+```{r}
+header.oa <- header.oa %>% 
+  mutate(Releve_area=ifelse(GIVD_ID=="SA-BR-002", 1000, Releve_area))
+```
+
+Modify `metadata.oa` to account for nested structure
+```{r}
+metadata.oa.braz <- metadata.oa %>% 
+  filter(PlotObservationID %in% braz.oa.pid) %>% 
+  dplyr::select(PlotObservationID, Original_nr_in_database) %>% 
+  separate(Original_nr_in_database, into = c("Original_plotID.bz", "Original_subplotID.bz"), sep="_")
+
+metadata.oa <- metadata.oa %>% 
+  left_join(metadata.oa.braz, by="PlotObservationID") %>% 
+  mutate(Original_plotID=coalesce(Original_plotID, Original_plotID.bz)) %>% 
+  mutate(Original_subplotID=coalesce(Original_subplotID, Original_subplotID.bz)) %>% 
+  dplyr::select(-Original_plotID.bz, -Original_subplotID.bz)
+```
+
 
 
 ### Correct known issues
