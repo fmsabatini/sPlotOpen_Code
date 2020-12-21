@@ -199,7 +199,13 @@ optin2.aff <- optin2.aff %>%
                       values="Josep Peñuelas")) %>% 
   mutate(Surname=replace(Surname, 
                       list=Surname=="Penuela", 
-                      values="Peñuelas"))
+                      values="Peñuelas")) %>% 
+  mutate(Country=replace(Country, 
+                       list=Surname=="Peñuelas", 
+                       values="Spain")) %>% 
+  rowwise() %>% 
+  mutate(Town=ifelse(Surname=="Peñuelas", paste0(Town, ", Catalonia"), Town)) %>% 
+  ungroup()
 
 
 #### 2.3. Merge lists ####
