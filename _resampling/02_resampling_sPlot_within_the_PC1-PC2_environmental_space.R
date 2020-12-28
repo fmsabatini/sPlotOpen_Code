@@ -1,7 +1,5 @@
-﻿#
-# 01 February 2017
 #
-setwd("C:/Users/Admin/Desktop/sPlotIII/sPlot")
+# 01 February 2017
 #
 library(spdep)
 library(raster)
@@ -16,6 +14,8 @@ library(RcppArmadillo)
 library(RcppParallel)
 #
 data(wrld_simpl)
+#
+# Loading the header data from the sPlot database v2.1
 #
 load("sPlot_header_20161124.RData")
 ls() # header
@@ -35,7 +35,7 @@ coords <- SpatialPoints(coords, proj4string=CRSlonlat)
 plot_data <- SpatialPointsDataFrame(coords, plot_data, proj4string=CRSlonlat)
 class(plot_data)
 #
-# Compute the full initial sampling effort
+# Compute the initial sampling effort across the geographical space per spatial unit of 2.5 arc minute
 #
 rgeo <- raster(nrows=360, ncols=720, xmn=-180, xmx=180, ymn=-90, ymx=90) # raster at half a degree resolution (cf. 30 arc minute resolution)
 rgeo <- disaggregate(rgeo, fact=12) # raster at 2.5 arc minute resolution hich is about 5 km at the equator (25 km2 is the approximate area of a spatial unit at the equator)
@@ -94,13 +94,13 @@ coords <- SpatialPoints(coords, proj4string=CRSlonlat)
 plot_data <- SpatialPointsDataFrame(coords, plot_data, proj4string=CRSlonlat)
 class(plot_data)
 #
-# Checking for relevés with identical spatial coordinates (just for information) 
+# Check for relevés with identical spatial coordinates (just for information) 
 #
 coordID <- paste(plot_data@data$Longitude, plot_data@data$Latitude, sep=":")
 length(coordID) # 799400 relevés
 length(unique(coordID)) # 509977 relevés with unique coordinates (about 64% of the relevés have unique coordinates)
 #
-# Plotting the global sampling effort per spatial unit of 2.5 arc minute
+# Plot the global sampling effort per spatial unit of 2.5 arc minute
 #
 seff_rgeo <- rasterize(plot_data@data[, c("POINT_X", "POINT_Y")], rgeo, fun="count")
 sum(getValues(seff_rgeo), na.rm=TRUE) # 799400 relevés
@@ -112,7 +112,7 @@ plot(wrld_simpl, add=T, border="darkgrey", lwd=0.1)
 title(main="Number (log-scale) of plots \nper 2.5 arc-minute spatial unit")
 dev.off()
 #
-# Plotting the global sampling effort per spatial unit of 0.5 degree
+# Plot the global sampling effort per spatial unit of 0.5 degree
 #
 seff_rgeo <- aggregate(seff_rgeo, fact=12, fun=sum)
 sum(getValues(seff_rgeo), na.rm=TRUE) # 799400 relevés
@@ -124,7 +124,7 @@ plot(wrld_simpl, add=T, border="darkgrey", lwd=0.1)
 title(main="Number (log-scale) of plots \nper 30 arc-minute spatial unit")
 dev.off()
 #
-# Plotting the global sampling effort per spatial unit of 1 degree
+# Plot the global sampling effort per spatial unit of 1 degree
 #
 seff_rgeo <- aggregate(seff_rgeo, fact=2, fun=sum)
 sum(getValues(seff_rgeo), na.rm=TRUE) # 799400 relevés
@@ -136,7 +136,7 @@ plot(wrld_simpl, add=T, border="darkgrey", lwd=0.1)
 title(main="Number (log-scale) of plots \nper 1 degree spatial unit")
 dev.off()
 #
-# Plotting the global sampling effort per spatial unit of 2 degrees
+# Plot the global sampling effort per spatial unit of 2 degrees
 #
 seff_rgeo <- aggregate(seff_rgeo, fact=2, fun=sum)
 sum(getValues(seff_rgeo), na.rm=TRUE) # 799400 relevés
@@ -148,7 +148,7 @@ plot(wrld_simpl, add=T, border="darkgrey", lwd=0.1)
 title(main="Number (log-scale) of plots \nper 2 degrees spatial unit")
 dev.off()
 #
-# Plotting the difference with the initial sampling effort per spatial unit of 2 degrees
+# Plot the difference with the initial sampling effort per spatial unit of 2 degrees
 #
 init_seff_rgeo <- aggregate(init_seff_rgeo, fact=48, fun=sum)
 sum(getValues(init_seff_rgeo), na.rm=TRUE) # 1120686 relevés
@@ -162,28 +162,25 @@ plot(wrld_simpl, add=T, border="darkgrey", lwd=0.1)
 title(main="Number (log-scale) of plots \nper 2 degrees spatial unit")
 dev.off()
 #
-# Computing the global sampling effort across the bivariate (PC1-PC2) environmental space (not the geographical space)
+# Compute the global sampling effort across the bivariate (PC1-PC2) environmental space (not the geographical space)
 #
 load("PC1_r.RData")
 load("PC2_r.RData")
 plot_data@data$cellID <- cellFromXY(rgeo, cbind(plot_data@data$POINT_X, plot_data@data$POINT_Y))
 plot_data@data$pc1_val <- extract(PC1_r, coordinates(plot_data))
 plot_data@data$pc2_val <- extract(PC2_r, coordinates(plot_data)) 
-# Compute the density of environmental conditions available at the global scale across the entire bivariate (PC1-PC2) environmental space
 load("pca3.RData")
 res <- 100 # Setting the number of bins per PCA axis to 100
 reco <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
-PC1_PC2_r <- rasterize(pca3$x[, 1:2], reco, fun="count")
-# Compute the sampling effort (number of vegetation plots) per environmental unit (cell) across the entire bivariate (PC1-PC2) environmental space
-sPlot_reco <- rasterize(plot_data@data[, c("pc1_val", "pc2_val")], reco, fun="count")
-# Put zero values for the empty cells (cf. there is no vegeteation plots available for those environmental conditions: gaps) 
+PC1_PC2_r <- rasterize(pca3$x[, 1:2], reco, fun="count") # Compute the density of geographic grid cells across the entire bivariate (PC1-PC2) environmental space
+sPlot_reco <- rasterize(plot_data@data[, c("pc1_val", "pc2_val")], reco, fun="count") # Compute the sampling effort (number of vegetation plots) per environmental unit (cell) across the entire bivariate (PC1-PC2) environmental space
 temp1 <- getValues(PC1_PC2_r)
-temp1[!is.na(temp1)] <- 0
+temp1[!is.na(temp1)] <- 0 # Put zero values for the empty cells (cf. there is no existing terrestrial grid cell available on Earth for the focal PC1-PC2 grid cell condition) 
 temp2 <- getValues(sPlot_reco)
-temp2[which(temp1==0&is.na(temp2))] <- 0
+temp2[which(temp1==0&is.na(temp2))] <- 0 # Put zero values for the empty cells (cf. there is no vegeteation plots available for those environmental conditions: gaps) 
 sPlot_reco <- setValues(reco, temp2)
 #
-# Plotting the number of 2.5 arc-minute cells for each cell of the PC1-PC2 space
+# Plot the number of 2.5 arc-minute cells for each cell of the PC1-PC2 space
 #
 tiff(filename="Global_availability_PC1-PC2.tiff", width=12, height=12, res=300, unit="cm")
 par(mar=c(4, 4, 4, 1)) 
@@ -192,7 +189,7 @@ plot(log(PC1_PC2_r), asp=0, col=rev(divPalette(n=100, name="RdBu")), legend.only
 title(main="Number of 2.5 arc-minute spatial units \nper environmental cell (log scale)")
 dev.off()
 #
-# Plotting the number of sPlot relevés for each cell of the PC1-PC2 space
+# Plot the number of sPlot relevés for each cell of the PC1-PC2 space
 #
 tiff(filename="Sampling_effort_PC1-PC2.tiff", width=12, height=12, res=300, unit="cm")
 par(mar=c(4, 4, 4, 1)) 
@@ -201,7 +198,7 @@ plot(log(sPlot_reco+1), asp=0, col=c("grey", rev(divPalette(n=99, name="RdBu")))
 title(main="Number of sPlot relevés \nper environmental cell (log scale)")
 dev.off()
 #
-# Plotting for each cell of the PC1-PC2 space the ratio between the relative proportion of sPlot relevés and the relative proportion of spatial units available worldwide
+# Plot for each cell of the PC1-PC2 space the ratio between the relative proportion of sPlot relevés and the relative proportion of spatial units available worldwide
 #
 tiff(filename="Sampling_effort_ratio_PC1-PC2.tiff", width=12, height=12, res=300, unit="cm")
 par(mar=c(4, 4, 4, 1)) 
@@ -210,7 +207,7 @@ plot(log(ratio_reco+1), asp=0, col=c("grey", rev(divPalette(n=99, name="Spectral
 title(main="Oversampled (>0.69) versus \nundersampled (<0.69) PC1-PC2 cells")
 dev.off()
 #
-# Running a sensitivity analysis to define the most appropriate resolution of the bivariate (PC1-PC2) environmental space
+# Run a sensitivity analysis to define the most appropriate resolution of the bivariate (PC1-PC2) environmental space
 #
 res <- seq(10, 500, 10)
 ncell_disp <- c()
@@ -241,46 +238,30 @@ plot(res, seff_mean)
 plot(res, nbrel_sel)
 plot(res, ncell_samp/ncell_disp, ylim=c(0, 1))
 #
-# Resampling sPlot
+# Resample sPlot within the PC1-PC2 environmental space to get an environmentally-balanced subset
 #
 plot_data <- plot_data@data
-# Save the latest version of plot_data
-save(plot_data, file="plot_data.RData")
-# Set environment variables for other processes called from within R 	
-Sys.setenv("PKG_CXXFLAGS"="-fopenmp")
-# Source C++ fonctions written by Tarek Hattab
-setwd("C:/Users/Admin/Desktop/sPlotIII/functions/Tarek Hattab")
-sourceCpp("bray.part.OpenMP.cpp")
-sourceCpp("bray.part.C_RcppParallel.cpp")
-sourceCpp("hcr.C.cpp")
-sourceCpp("cast_binary.cpp")
-# R wrapper for BigBray C++ function
+save(plot_data, file="plot_data.RData") # Save the latest version of plot_data
+Sys.setenv("PKG_CXXFLAGS"="-fopenmp") # Set environment variables for other processes called from within R 	
+sourceCpp("/_functions_TH/bray.part.OpenMP.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/bray.part.C_RcppParallel.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/hcr.C.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
+sourceCpp("/_functions_TH/cast_binary.cpp") # Source C++ fonctions written by Tarek Hattab from folder "_functions_TH"
 BigBrayPart <- function(bigMat) {
   zeros <- big.matrix(nrow=nrow(bigMat), ncol=nrow(bigMat), init=0, type=typeof(bigMat), shared=FALSE, backingfile=paste("BrayMatrix_",i,sep=""), backingpath=getwd(), descriptorfile=paste("BrayMatrix_",i,".desc",sep=""))
   bray_distance_OpenMP(bigMat@address, zeros@address)
   return(zeros)
 }
-# Set the resolution of the environmental space based on the sensitivity analysis
-res <- 100
-# Prepare the environmental space restricted to sPlot relevés only (not the entire environmental space available at a global extent)
-r <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2]))
+res <- 100 # Set the resolution of the environmental space based on the sensitivity analysis
+r <- raster(nrows=res, ncols=res, xmn=min(pca3$x[, 1]), xmx=max(pca3$x[, 1]), ymn=min(pca3$x[, 2]), ymx=max(pca3$x[, 2])) # Prepare the environmental space restricted to sPlot relevés only (not the entire environmental space available at a global extent)
 pca_sPlot_r <- rasterize(plot_data[, c("pc1_val", "pc2_val")], r, fun="count")
-# Compute the cutoff value above which relevés have to be resampled for a given cell
-cutoff <- median(values(pca_sPlot_r), na.rm=TRUE)
-# Select only the coordinates of the environmental cells for which the total number of sPlot relevés available exceeds the cutoff value
-tempZoneOut <- coordinates(pca_sPlot_r)[which(values(pca_sPlot_r)>cutoff), ]
-# Set the number of repetitions for the HCR function
-repet <- 100
-# Prepare the species data table that will be used by the HCR approach
-sp_data <- DT2[, c(1, 2, 7)]
+cutoff <- median(values(pca_sPlot_r), na.rm=TRUE) # Compute the cutoff value above which relevés have to be resampled for a given cell
+tempZoneOut <- coordinates(pca_sPlot_r)[which(values(pca_sPlot_r)>cutoff), ] # Select only the coordinates of the environmental cells for which the total number of sPlot relevés available exceeds the cutoff value
+repet <- 100 # Set the number of repetitions for the HCR function
+sp_data <- DT2[, c(1, 2, 7)] # Prepare the species data table that will be used by the HCR approach
 names(sp_data) <- c("plot_id", "sp_name", "rel_cov")
-# Save the latest version of sp_data
-save(sp_data, file="sp_data.RData")
-# Prepare an empty object to store the IDs of the relevés to be removed
-plotToRemove <- as.list(rep(NA, repet))
-# Set the path to save the output
-setwd("C:/Users/Admin/Desktop/sPlotIII/sPlot")
-# Loop across all selected environmental cells for which the total number of sPlot relevés available exceeds the cutoff value
+save(sp_data, file="sp_data.RData") # Save the latest version of sp_data
+plotToRemove <- as.list(rep(NA, repet)) # Prepare an empty object to store the IDs of the relevés to be removed
 for (i in 1:nrow(tempZoneOut)) {
   print("--------")
   print(paste(i, "out of", nrow(tempZoneOut), "cells", sep=" "))
