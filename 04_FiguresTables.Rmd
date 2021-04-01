@@ -1,5 +1,5 @@
 ---
-title: "Project#02 - Fugres and Tables"
+title: "Project#02 - Figures and Tables"
 author: "Francesco Maria Sabatini"
 date: "4/28/2020"
 output:
@@ -70,7 +70,7 @@ header.sf <- SpatialPointsDataFrame(coords= header.oa %>%
 
 Country boundaries and world graticule
 ```{r, cache=T, results="hide", warning=F, message=F}
-#download data from rnaturalearth package
+#data downloaded from rnaturalearth package
 countries <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_admin_0_countries.shp") %>% 
   st_as_sf() %>% 
   st_transform(crs = "+proj=eck4") %>% 
@@ -81,9 +81,7 @@ graticules <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/n
   st_geometry()
 
 bb <- readOGR("/data/sPlot/users/Francesco/Ancillary_Data/naturalearth/ne_110m_wgs84_bounding_box.shp") %>% 
-    st_as_sf() %>% 
-  #ne_download(type = "wgs84_bounding_box", category = "physical",
-      #            returnclass = "sf") %>% 
+  st_as_sf() %>% 
   st_transform(crs = "+proj=eck4") %>% 
   st_geometry()
 ```
@@ -148,7 +146,7 @@ Figures and tables for the manuscript in the [sPlotOpen_Manuscript](https://fmsa
 
 ## Figure 1 - Geographic distribution of plots
 
-Map of plot distribution - Version 1 - Coloured point.  
+Map of plot distribution - Version 1 - Coloured points.  
 Each colour represents a database. Please note there are not enough colours in the palette to represent all 105 datasets
 ```{r, fig.width=8, fig.height=6, fig.align="center", warning=F, message=F, cache=T}
 Figure1a <- w3a + 
@@ -182,27 +180,28 @@ grid   <- dgcellstogrid(dggs, header.dggs$cell, frame=F) %>%
   st_wrap_dateline(options = c("WRAPDATELINE=YES"))
 
 ## plotting
-(Figure1 <- w3a + 
+Figure1b <- w3a + 
     geom_sf(data=grid, aes(fill=value.out),lwd=0, alpha=0.9)    +
     geom_sf(data = countries, col = "grey20", fill=NA, lwd = 0.3) + 
     scale_fill_viridis(
       name="# plots", breaks=0:5, labels = c("1", "10", "100",
-                                             "1,000", "10,000", "100,000"), option="viridis"))
+                                             "1,000", "10,000", "100,000"), option="viridis")
 
 #ggsave("_output/figure1.png", plot=Figure1, width=8, height=4, units="in", dpi=300)
 ```
 Panel with two versions of figure 1
-```{r}
-fig1.leg <- get_legend(Figure1 + 
+```{r, fig.width=5.5, fig.height=5, fig.align="center", cache=T}
+fig1.leg <- get_legend(Figure1b + 
                          guides(fill = guide_colourbar(barwidth = 1, barheight = 6)) +
                          theme(legend.title = element_text(size = 7), 
                          legend.text = element_text(size = 7)))
 fig1_panel <- plot_grid(Figure1a, NULL,
-                        Figure1 + 
+                        Figure1b + 
                           theme(legend.position = "none"), fig1.leg,
                         nrow=2, ncol=2, byrow = T, #labels = c("a","", "b", ""),
                         rel_widths = c(0.84,0.16))
 ggsave("_output/figure1.png", plot=fig1_panel, width=5.5, height=5, units="in", dpi=300)
+fig1_panel
 ```
 
 
@@ -285,6 +284,7 @@ sPlot_reco.tbl <- data.frame(xyFromCell(sPlot_reco, cell = 1:10000)) %>%
 
 
 
+Figure2 - Bottom left.  
 Make gridded heatmap plot
 ```{r}
 pca.heatmap <- ggplot() + 
@@ -306,6 +306,7 @@ pca.heatmap <- ggplot() +
 
 ```
 
+Figure 2 - Bottom right  
 Randomly select four pixels with >45 plots, extract center coordinates and add to heatmap.
 ```{r}
 set.seed(558)
@@ -356,19 +357,7 @@ for(i in c("A", "B", "C", "D")){
 }
 ```
 
-
-```{r, echo=F, eval=F}
-#Create panel, joining the labeled heatmap, and the for inset maps.
-# library(cowplot)
-# panel.out <- plot_grid(pca.heatmap2, plot_grid(plot_grid(inset.list[[1]], inset.list[[2]], nrow=2, labels = c("A", "B")),
-#                                                plot_grid(inset.list[[3]], inset.list[[4]], nrow=2, labels = c("C", "D"))), 
-#           ncol=2, rel_widths = c(0.35, 0.65), align = "h")
-# 
-# ggsave(filename = "_output/pca.panel.png", width=8.5, height=3.3, units = "in", dpi=300, plot=panel.out)
-```
-
-
-Formerly Figure S2 - PCA world
+Figure 2 - Top  
 
 ```{r}
 splot.world2.eckert <- SpatialPointsDataFrame(coords=splot.world2 %>% 
@@ -383,7 +372,7 @@ splot.world2.eckert <- data.frame(splot.world2.eckert@coords,
 
 PCA_tbl <- as_tibble(splot.world2.eckert) %>%
   dplyr::select(RAST_ID, RAST_X, RAST_Y) %>%
-  left_join(as.tbl(as.data.frame(pca3$x[,1:2]) %>%
+  left_join(as_tibble(as.data.frame(pca3$x[,1:2]) %>%
               rownames_to_column(var="RAST_ID")) %>%
               mutate(RAST_ID=as.integer(RAST_ID)),
       by="RAST_ID") %>%
@@ -391,7 +380,6 @@ PCA_tbl <- as_tibble(splot.world2.eckert) %>%
 
 ggpc1 <- w4a + 
   geom_tile(data=PCA_tbl %>% 
-              #slice(1:1000) %>% 
               mutate(PC1=ifelse(PC1> 6,  6, PC1)) %>% 
               mutate(PC1=ifelse(PC1< -6, -6, PC1)), 
             aes(x=RAST_X,y=RAST_Y, fill=PC1, color=PC1)) + 
@@ -411,15 +399,16 @@ ggpc1 <- w4a +
 
 ggpc2 <- w4a + 
   geom_tile(data=PCA_tbl %>% 
-              #slice(1:1000) %>% 
               mutate(PC2=ifelse(PC2> 9,  9, PC2)) %>% 
               mutate(PC2=ifelse(PC2< -6, -6, PC2)), 
             aes(x=RAST_X,y=RAST_Y, fill=PC2, color=PC2)) + 
   geom_sf(data = bb, col = "grey20", fill = NA) +
   scale_fill_distiller("PC2", type = "seq", palette = "Spectral", 
-                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), labels=c("<-6", -3, 0, 3, 6,">9" )) +
+                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), 
+                       labels=c("<-6", -3, 0, 3, 6,">9" )) +
   scale_color_distiller("PC2", type = "seq", palette = "Spectral", 
-                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), labels=c("<-6", -3, 0, 3, 6,">9" )) +
+                       direction=+1, limits = c(-6.1,9.1), breaks=seq(-6,9, length.out = 6), 
+                       labels=c("<-6", -3, 0, 3, 6,">9" )) +
   theme_bw() +
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(), 
@@ -429,14 +418,8 @@ ggpc2 <- w4a +
 ```
 
 
-```{r}
-#ggpc.panel <- cowplot::plot_grid(ggpc1, ggpc2, nrow=2, labels=c("a", "b"))
-#ggsave(filename="_output/figureS2.png", width=7, height=6, units="in", dpi=300, plot=ggpc.panel)
-```
-
-
-Merge Figure 2 and Figure S2 into a unique panel.
-```{r}
+Figure 2 - Panel
+```{r, fig.width=8, fig.height=5.6, fig.align="center", cache=T, cache.lazy = FALSE}
 library(cowplot)
 varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
 panel.out1 <- 
@@ -450,7 +433,6 @@ panel.out1 <-
                       legend.background = element_blank()) +
                 xlab(paste("PC1 (", varexpl[1], "%) - cold/seasonal to hot/stable", sep="")) + 
                 ylab(paste("PC2 (", varexpl[2], "%) - dry to wet", sep="")) + 
-                #theme(plot.margin=margin(l=-0.2, r=-0.1, unit="cm")) + 
                 xlim(c(-15,15)) + ylim(c(-5,22)),  
               plot_grid(plot_grid(inset.list[[1]], inset.list[[4]], NULL, 
                                   nrow=3, labels = c("A", "D", ""), rel_heights = c(1,1,0.1)),
@@ -460,6 +442,8 @@ panel.out1 <-
           
 
 ggsave(filename = "_output/figure2.png", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
+
+panel.out1
 ```
 
 
@@ -475,23 +459,7 @@ climate.oa <- climate %>%
   rename(PlotObservationID=PlotID)
 ```
 
-Create Whittaker plot
-```{r, fig.width=8, fig.height=5, fig.align="center", message=F, cache=T}
-whitt.biome <- whittaker_base_plot() +
-  theme_classic() + 
-  geom_point(data=climate.oa %>% 
-                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
-              aes(x=bio01, y=bio12/10), 
-             alpha=1/4, 
-             cex=1/20) + 
-    theme(axis.text.y = element_blank(),
-          axis.text = element_text(size=9),
-          axis.title.y = element_blank(),
-          axis.title = element_text(size=9),
-          plot.margin=margin(l=-0.2, r=-0.1, unit="cm"), 
-          legend.text = element_text(size=8),
-          legend.title = element_text(size=9)) 
-```
+Figure 3 - Left
 Create plot of Schultz' biomes
 ```{r}
 biome.order <- c('Polar and subpolar zone' ,'Alpine' ,'Boreal zone' ,'Temperate midlatitudes' ,
@@ -502,21 +470,12 @@ biome.labs <- c('Polar & subpolar' ,'Alpine' ,'Boreal zone' ,'Temperate midlatit
                  'Subtropics - winter\n rain' ,'Tropics - summer rain' ,'Tropics - year-round\n rain')
 
 
-(mypalette <- palette(c('#CAB2D6','#6A3D9A', #violets
+mypalette <- palette(c('#CAB2D6','#6A3D9A', #violets
                         '#A6CEE3','#1F78B4', #blues
                         '#FDBF6F','#FF7F00', #orange
                         '#B2DF8A','#33A02C', #greens
                         '#FB9A99','#E31A1C' #reds
-                        )))
-
-#myworld <- splot.world2 %>% 
-#           dplyr::select(BIO_01, BIO_12) %>% 
-#  #filter(BIO_12<5000) %>% 
-#  mutate(BIO_01=BIO_01/10, BIO_12=BIO_12/10)
-#kd <- ks::kde(myworld, compute.cont=TRUE)
-#contour_95 <- with(kd, contourLines(x=eval.points[[1]], y=eval.points[[2]],
-#                                    z=estimate, levels=cont["5%"])[[1]])
-#contour_95 <- data.frame(contour_95)
+                        ))
 
 # Plot of Temp vs Prec + sBiomes
 biome.schu <- ggplot() + 
@@ -536,18 +495,46 @@ biome.schu <- ggplot() +
              cex=1/15) + 
   xlab("Temperature (°C)") + 
   ylab("Precipitation (mm)") + 
-  scale_color_manual(values = mypalette, name="sBiomes") + 
+  scale_color_manual(values = c('#CAB2D6','#6A3D9A', #violets
+                        '#A6CEE3','#1F78B4', #blues
+                        '#FDBF6F','#FF7F00', #orange
+                        '#B2DF8A','#33A02C', #greens
+                        '#FB9A99','#E31A1C' #reds
+                        ), name="sBiomes") + 
   guides(color = guide_legend(override.aes = list(size=5, shape=15, alpha=1))) + 
   theme(#plot.margin=margin(r=-0.1, unit="cm"),
         axis.title = element_text(size=9),
         axis.text = element_text(size=9),
         legend.text = element_text(size=8), 
         legend.title = element_text(size=9))
+```
 
+Figure 3 - Right  
+Create Whittaker plot
+```{r}
+whitt.biome <- whittaker_base_plot() +
+  theme_classic() + 
+  geom_point(data=climate.oa %>% 
+                filter(bio12<4500 & bio01>-11), #filter out for plotting reasons 
+              aes(x=bio01, y=bio12/10), 
+             alpha=1/4, 
+             cex=1/20) + 
+    theme(axis.text.y = element_blank(),
+          axis.text = element_text(size=9),
+          axis.title.y = element_blank(),
+          axis.title = element_text(size=9),
+          plot.margin=margin(l=-0.2, r=-0.1, unit="cm"), 
+          legend.text = element_text(size=8),
+          legend.title = element_text(size=9)) 
+```
 
+Figure 3 - Panel
+```{r, fig.width=8, fig.height=4, fig.align="center", message=F, cache=T}
 #Make a panel with the two plots
-panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, align = "h", rel_widths = c(0.5, .5))
+panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, 
+                                    align = "h", rel_widths = c(0.5, .5))
 ggsave(filename="_output/figure3.png", plot = panel.biomes, width = 10, height=4, units="in")
+panel.biomes
 ```
 
 # Supplementary figures
@@ -555,7 +542,7 @@ ggsave(filename="_output/figure3.png", plot = panel.biomes, width = 10, height=4
 
 
 ## Figure S1 - Biplot
-```{r}
+```{r, fig.width=5.7, fig.height=7, fig.align="center", warning=F}
 library(ggrepel)
 varexpl <- round(pca3$sdev^2/sum(pca3$sdev^2)*100,1)
 
@@ -570,9 +557,7 @@ myarrows <- pca3$rotation[,1:2] %>%
   filter(!mylab %in% c("T_ANN", "P_ANN"))
   
 
-ggpca3 <- ggplot(data=mydata #%>% 
-                   #sample_frac(0.1)
-                   ) +
+ggpca3 <- ggplot(data=mydata) +
     stat_summary_2d(
     aes(x = PC1, y = PC2, z = count),
     bins = 100,
@@ -598,6 +583,7 @@ ggpca3 <- ggplot(data=mydata #%>%
   ylim(c(-6,22))
 
 ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
+ggpca3
 ```
 
 
