@@ -1,0 +1,152 @@
+---
+title: "sPlotOpen - Demo"
+author: "Francesco Maria Sabatini"
+date: "07/04/2021"
+output: html_document
+---
+
+This demo illustrates how to import and manipulate sPlotOpen data to create some basic graphical or table outputs together with a reference list.    
+<br>
+```{r, message=F, warning=F}
+library(tidyverse)
+library(sf)
+library(raster)
+library(rnaturalearth)
+```
+
+## Import data
+```{r}
+load("_sPlotOpenDB/sPlotOpen.RData")
+ls()
+```
+## Extract all plots containing at least a *Quercus* species 
+Use only the first resampled iteration of sPlotOpen
+```{r}
+#select only the first resample
+header.oa1 <- header.oa %>% 
+  filter(Resample_1==T)
+DT2.oa1 <- DT2.oa %>% 
+  filter(PlotObservationID %in% header.oa1$PlotObservationID)
+CWM_CWV.oa1 <- CWM_CWV.oa %>% 
+  filter(PlotObservationID %in% header.oa1$PlotObservationID)
+```
+
+```{r}
+#get all plots containing at least one Quercus species
+plotlist.quercus <- DT2.oa1 %>% 
+  filter(str_detect(Species, "^Quercus")) %>% 
+  distinct(PlotObservationID) %>% 
+  pull(PlotObservationID)
+
+header.quercus <- header.oa1 %>% 
+  filter(PlotObservationID %in% plotlist.quercus & 
+           Resample_1==T)
+
+DT2.quercus <- DT2.oa1 %>% 
+  filter(PlotObservationID %in% plotlist.quercus)
+
+CWM_CWV.quercus <- CWM_CWV.oa1 %>% 
+  mutate(Quercus=ifelse(PlotObservationID %in% plotlist.quercus, T, F))
+
+```
+There are `r length(plotlist.quercus)` plots containing at least a *Quercus* species.  
+<br>
+
+## Number of plots with *Quercus* across biomes
+Summarize the number of plots containing at least one *Quercus* species across biomes  
+
+```{r}
+header.quercus %>% 
+  group_by(Biome) %>% 
+  summarize(n=n())
+```
+## Compare Community Weighted Means
+Compare the distribution of the community weighted means of Stem density, between plots containing and not containing a *Quercus* species.
+
+```{r, warning=F}
+ggplot(data=CWM_CWV.quercus) + 
+  geom_density(aes(x=StemDens_CWM, fill=Quercus), col=NA, alpha=0.5) + 
+  theme_bw()
+```
+
+## Geographical distribution of plots containing a *Quercus* species  
+<br>
+Download some spatial data of the world and create a template map using the r package `rnaturalearth`, first. Transform all geographical data to Eckert IV projection.
+```{r, message=F, warning=F, results="hide"}
+countries <- ne_countries(returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+graticules <- ne_download(type = "graticules_15", category = "physical",
+                          returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+bb <- ne_download(type = "wgs84_bounding_box", category = "physical",
+                  returnclass = "sf") %>% 
+  st_transform(crs = "+proj=eck4") %>% 
+  st_geometry()
+```
+
+Template of Global map - with country borders
+```{r, cache=T, results="hide", warning=F, message=F}
+w3a <- ggplot() +
+  geom_sf(data = bb, col = "grey20", fill = "white") +
+  geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
+  geom_sf(data = countries, fill = "grey90", col = NA, lwd = 0.3) +
+  coord_sf(crs = "+proj=eck4") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), 
+        legend.title=element_text(size=12), 
+        legend.text=element_text(size=12),
+        legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+        legend.key.height = unit(1.1, "cm"), 
+        legend.key.width = unit(1.1, "cm"))
+```
+Project selected plots to Eckert IV and transform them to sf, before plotting.
+```{r, results="hide", warning=F, message=F}
+header.quercus.sf <- SpatialPointsDataFrame(coords= header.quercus %>%
+                                      dplyr::select(Longitude, Latitude), 
+                                    proj4string = CRS("+init=epsg:4326"), 
+                                    data=header.quercus %>%
+                                      dplyr::select(-Longitude, -Latitude)) %>% 
+  st_as_sf() %>% 
+  st_transform(crs = "+proj=eck4")
+```
+
+Show all plots containing at least one *Quercus* species. Color code based on biomes.
+```{r, fig.width=8, fig.height=9, fig.align="center", warning=F, message=F, cache=T}
+(Figure1a <- w3a + 
+  geom_sf(data=header.quercus.sf, aes(color=Biome), pch=16, size=0.8, alpha=0.8) + # aes(col=Dataset),
+  geom_sf(data = countries, col = "grey20", fill=NA, lwd = 0.3) + 
+  theme(legend.position = "bottom", 
+        legend.title = element_blank()) + 
+  guides(color=guide_legend(ncol = 2,
+                            override.aes = list(size = 2))))
+```
+
+# Create a reference list for selected plots
+```{r}
+sPlotOpen_citation(IDs=plotlist.quercus, level="database", out.file = "_output/demo.bib")
+# show first few lines of output file
+read_lines("_output/demo.bib", n_max = 25)
+```
+
+```{r, warning=F}
+mybib <- RefManageR::ReadBib("_output/demo.bib", check = FALSE) 
+mybib
+
+```
+
+## sessionInfo()
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
