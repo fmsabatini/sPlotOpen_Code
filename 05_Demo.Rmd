@@ -87,7 +87,7 @@ bb <- ne_download(type = "wgs84_bounding_box", category = "physical",
 ```
 
 Template of Global map - with country borders
-```{r, cache=T, results="hide", warning=F, message=F}
+```{r, results="hide", warning=F, message=F}
 w3a <- ggplot() +
   geom_sf(data = bb, col = "grey20", fill = "white") +
   geom_sf(data = graticules, col = "grey20", lwd = 0.1) +
@@ -113,7 +113,7 @@ header.quercus.sf <- SpatialPointsDataFrame(coords= header.quercus %>%
 ```
 
 Show all plots containing at least one *Quercus* species. Color code based on biomes.
-```{r, fig.width=8, fig.height=9, fig.align="center", warning=F, message=F, cache=T}
+```{r, fig.width=8, fig.height=9, fig.align="center", warning=F, message=F}
 (Figure1a <- w3a + 
   geom_sf(data=header.quercus.sf, aes(color=Biome), pch=16, size=0.8, alpha=0.8) + # aes(col=Dataset),
   geom_sf(data = countries, col = "grey20", fill=NA, lwd = 0.3) + 
@@ -133,7 +133,6 @@ read_lines("_output/demo.bib", n_max = 25)
 ```{r, warning=F}
 mybib <- RefManageR::ReadBib("_output/demo.bib", check = FALSE) 
 mybib
-
 ```
 
 ## sessionInfo()
