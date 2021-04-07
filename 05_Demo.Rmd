@@ -1,17 +1,28 @@
 ---
-title: "sPlotOpen - Demo"
-author: "Francesco Maria Sabatini"
+title: "Appendix 1 - sPlotOpen - Demo"
+author: "Francesco Maria Sabatini, Jonathan Lenoir, Helge Bruelheide"
 date: "07/04/2021"
-output: html_document
+output: pdf_document
 ---
 
-This demo illustrates how to import and manipulate sPlotOpen data to create some basic graphical or table outputs together with a reference list.    
+Appendix to the paper: Sabatini, Lenoir et al., sPlotOpen – An environmentally-balanced, open-access, global dataset of vegetation plots. *Global Ecology and Biogeography*.
 <br>
+
+This demo illustrates how to import and manipulate sPlotOpen data to create some basic graphics or tables together with a reference list. As a worked example, the code below will:  
+1. select all plots containing at least a species of *Quercus* from sPlotOpen's resampled iteration #1  
+2. show some summary at biome level  
+3. graph the distribution of the community weighted mean of a selected functional trait  
+4. show the geographical location of all selected plots  
+5. create a reference list based on the plots effectively selected.  
+<br>
+
 ```{r, message=F, warning=F}
+#load libraries
 library(tidyverse)
 library(sf)
 library(raster)
 library(rnaturalearth)
+library(RefManageR)
 ```
 
 ## Import data
@@ -49,7 +60,7 @@ CWM_CWV.quercus <- CWM_CWV.oa1 %>%
   mutate(Quercus=ifelse(PlotObservationID %in% plotlist.quercus, T, F))
 
 ```
-There are `r length(plotlist.quercus)` plots containing at least a *Quercus* species.  
+There are `r length(plotlist.quercus)` plots containing at least a *Quercus* species in sPlotOpen's resampled iteration 1.  
 <br>
 
 ## Number of plots with *Quercus* across biomes
@@ -60,6 +71,8 @@ header.quercus %>%
   group_by(Biome) %>% 
   summarize(n=n())
 ```
+\pagebreak
+
 ## Compare Community Weighted Means
 Compare the distribution of the community weighted means of Stem density, between plots containing and not containing a *Quercus* species.
 
@@ -68,6 +81,7 @@ ggplot(data=CWM_CWV.quercus) +
   geom_density(aes(x=StemDens_CWM, fill=Quercus), col=NA, alpha=0.5) + 
   theme_bw()
 ```
+\pagebreak
 
 ## Geographical distribution of plots containing a *Quercus* species  
 <br>
@@ -122,14 +136,17 @@ Show all plots containing at least one *Quercus* species. Color code based on bi
   guides(color=guide_legend(ncol = 2,
                             override.aes = list(size = 2))))
 ```
+\pagebreak
 
 # Create a reference list for selected plots
+Create reference list as BibText
 ```{r}
 sPlotOpen_citation(IDs=plotlist.quercus, level="database", out.file = "_output/demo.bib")
 # show first few lines of output file
 read_lines("_output/demo.bib", n_max = 25)
 ```
 
+Convert to reference list
 ```{r, warning=F}
 mybib <- RefManageR::ReadBib("_output/demo.bib", check = FALSE) 
 mybib
