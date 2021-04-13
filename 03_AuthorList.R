@@ -445,5 +445,15 @@ write_delim(approve.checklist, file = "_output/Author_checklist_batch2.txt", del
 
 
 
+#### 6. Create list of ORCIDs
+affiliations %>% 
+  distinct(name, orcid) %>%
+  unite(name, name, orcid, sep=", ") %>% 
+  mutate(name=str_remove(name, pattern=" NA$")) %>% 
+  mutate(name=paste0(name, "\n")) %>% 
+  pull(name) %>% 
+  cat()
+  
+
 
 
