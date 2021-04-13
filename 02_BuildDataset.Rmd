@@ -912,7 +912,7 @@ rename.duplicates <- function(x){
 }
 
 #fix duplicated bibtex keys
-reference.oa <- bind_rows(br1.out, br1.out.123, br2.out, bib.db) %>% 
+reference.oa <- bind_rows(bib.db, br1.out, br1.out.123, br2.out) %>% 
   distinct() %>% 
   filter((Fullref %in% Biblioref.raw$Fullref  | 
             Fullref %in% Biblioref.raw_123$Fullref | 
