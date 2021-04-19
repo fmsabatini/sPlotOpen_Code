@@ -9,11 +9,13 @@ Appendix to the paper: Sabatini, Lenoir et al., sPlotOpen – An environmentally
 <br>
 
 This demo illustrates how to import and manipulate sPlotOpen data to create some basic graphics or tables together with a reference list. As a worked example, the code below will:  
+
 1. select all plots containing at least a species of *Quercus* from sPlotOpen's resampled iteration #1  
 2. show some summary at biome level  
 3. graph the distribution of the community weighted mean of a selected functional trait  
 4. show the geographical location of all selected plots  
 5. create a reference list based on the plots effectively selected.  
+
 <br>
 
 ```{r, message=F, warning=F}
@@ -35,7 +37,7 @@ Use only the first resampled iteration of sPlotOpen
 ```{r}
 #select only the first resample
 header.oa1 <- header.oa %>% 
-  filter(Resample_1==T)
+  filter(Resample_1 == T)
 DT2.oa1 <- DT2.oa %>% 
   filter(PlotObservationID %in% header.oa1$PlotObservationID)
 CWM_CWV.oa1 <- CWM_CWV.oa %>% 
@@ -51,7 +53,7 @@ plotlist.quercus <- DT2.oa1 %>%
 
 header.quercus <- header.oa1 %>% 
   filter(PlotObservationID %in% plotlist.quercus & 
-           Resample_1==T)
+           Resample_1 == T)
 
 DT2.quercus <- DT2.oa1 %>% 
   filter(PlotObservationID %in% plotlist.quercus)
@@ -69,7 +71,7 @@ Summarize the number of plots containing at least one *Quercus* species across b
 ```{r}
 header.quercus %>% 
   group_by(Biome) %>% 
-  summarize(n=n())
+  summarize(n = n())
 ```
 \pagebreak
 
@@ -77,8 +79,8 @@ header.quercus %>%
 Compare the distribution of the community weighted means of Stem density, between plots containing and not containing a *Quercus* species.
 
 ```{r, warning=F}
-ggplot(data=CWM_CWV.quercus) + 
-  geom_density(aes(x=StemDens_CWM, fill=Quercus), col=NA, alpha=0.5) + 
+ggplot(data = CWM_CWV.quercus) + 
+  geom_density(aes(x = StemDens_CWM, fill = Quercus), col = NA, alpha = 0.5) + 
   theme_bw()
 ```
 \pagebreak
@@ -109,15 +111,15 @@ w3a <- ggplot() +
   coord_sf(crs = "+proj=eck4") +
   theme_minimal() +
   theme(axis.text = element_blank(), 
-        legend.title=element_text(size=12), 
-        legend.text=element_text(size=12),
-        legend.background = element_rect(size=0.1, linetype="solid", colour = 1), 
+        legend.title = element_text(size=12), 
+        legend.text = element_text(size=12),
+        legend.background = element_rect(size = 0.1, linetype = "solid", colour = 1), 
         legend.key.height = unit(1.1, "cm"), 
         legend.key.width = unit(1.1, "cm"))
 ```
 Project selected plots to Eckert IV and transform them to sf, before plotting.
 ```{r, results="hide", warning=F, message=F}
-header.quercus.sf <- SpatialPointsDataFrame(coords= header.quercus %>%
+header.quercus.sf <- SpatialPointsDataFrame(coords = header.quercus %>%
                                       dplyr::select(Longitude, Latitude), 
                                     proj4string = CRS("+init=epsg:4326"), 
                                     data=header.quercus %>%
@@ -129,11 +131,12 @@ header.quercus.sf <- SpatialPointsDataFrame(coords= header.quercus %>%
 Show all plots containing at least one *Quercus* species. Color code based on biomes.
 ```{r, fig.width=8, fig.height=9, fig.align="center", warning=F, message=F}
 (Figure1a <- w3a + 
-  geom_sf(data=header.quercus.sf, aes(color=Biome), pch=16, size=0.8, alpha=0.8) + # aes(col=Dataset),
+  geom_sf(data = header.quercus.sf, aes(color = Biome), 
+          pch = 16, size = 0.8, alpha = 0.8) + 
   geom_sf(data = countries, col = "grey20", fill=NA, lwd = 0.3) + 
   theme(legend.position = "bottom", 
         legend.title = element_blank()) + 
-  guides(color=guide_legend(ncol = 2,
+  guides(color = guide_legend(ncol = 2,
                             override.aes = list(size = 2))))
 ```
 \pagebreak
@@ -141,7 +144,8 @@ Show all plots containing at least one *Quercus* species. Color code based on bi
 # Create a reference list for selected plots
 Create reference list as BibText
 ```{r}
-sPlotOpen_citation(IDs=plotlist.quercus, level="database", out.file = "_output/demo.bib")
+sPlotOpen_citation(IDs=plotlist.quercus, level = "database", 
+                   out.file = "_output/demo.bib")
 # show first few lines of output file
 read_lines("_output/demo.bib", n_max = 25)
 ```
