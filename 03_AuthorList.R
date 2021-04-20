@@ -126,7 +126,7 @@ third <- tibble(Name="Tarek Hattab",
                 `E-Mail`="Tarek.Hattab@ifremer.fr",
                 ORCID="0000-0002-1420-5758",
                 `Department/Institute/Faculty`="CNRS, IFREMER and IRD",
-                `University/Institution`="MARBEC, University of Montpellier",
+                `University/Institution`="MARBEC, Univ Montpellier",
                 Town="Sète",
                 Country="France", 
                 Surname="Hattab")
@@ -171,7 +171,14 @@ optins <- read_csv("_management/Opt-in - Project #02 (Responses) - Form response
                       values="Bergen")) %>% 
   mutate(Country=replace(Country,
                       list=Name=="John-Arvid Grytnes",
-                      values="Norway"))
+                      values="Norway")) %>% 
+  mutate(ORCID=ifelse(Surname=="Zobel", "0000-0001-7957-6704", ORCID)) %>% 
+  mutate(ORCID=ifelse(Surname=="Brunet", "0000-0003-2667-4575", ORCID)) %>% 
+  mutate(Street=str_replace(Street, "Czech Repunlic", "Czech Republic")) %>% 
+  mutate(Street=str_replace(Street, "Jr. José Sabogal #913", "Jr. José Sabogal 913"))
+
+
+
 
 ### second batch of opt-ins (mostly from TRY)
 ### 14/12/2020
@@ -205,12 +212,29 @@ optin2.aff <- optin2.aff %>%
                        values="Spain")) %>% 
   rowwise() %>% 
   mutate(Town=ifelse(Surname=="Peñuelas", paste0(Town, ", Catalonia"), Town)) %>% 
-  ungroup()
+  ungroup() %>% 
+  #Add second affiliation Lens
+  bind_rows(
+    tibble(
+      Name = "Frederic Lens",
+      Surname = "Lens", 
+      Sequence_affiliations=2,
+      ORCID="0000-0002-5001-0149",
+      `E-Mail` = "frederic.lens@naturalis.nl",
+      `Department/Institute/Faculty` = "Institute of Biology Leiden",
+      `University/Institution` = "Leiden University",
+      Street = "Sylviusweg 72",
+      `Postal code` = "2333 BE",
+      Town = "Leiden",
+      Country = "The Netherlands"
+    )
+  )
+
 
 
 #### 2.3. Merge lists ####
 # first + core sPlot [alphabetical] + (custodians + opt-ins + TRY) [alphabetical] + last author
-affiliations <- first %>% 
+affiliations0 <- first %>% 
   bind_rows(third) %>% 
   bind_rows(core) %>% 
   bind_rows(allaffiliations %>% 
@@ -283,17 +307,31 @@ affiliations <- first %>%
               ### Authors from RAINFOR - as recommended by Oliver Phillips
               bind_rows(
                 tibble(
-                  Name = c("Abel Monteagudo Mendoza", "Rodolfo Vásquez Martínez"),
+                  Name = "Abel Monteagudo Mendoza",
+                  Sequence_affiliations = 1:2,
+                  ORCID="0000-0002-1047-845X",
+                  `E-Mail` = "amonteagudomendoza@gmail.com", 
+                  `Department/Institute/Faculty` = "",
+                  `University/Institution` = c("Jardín Botánico de Missouri Oxapampa", "Universidad Nacional de San Antonio Abad del Cusco"),
+                  Street = c("Bolognesi Mz-E-6", "Av. de la Cultura 733"),
+                  `Postal code` = NA,
+                  Town = c("Oxapampa, Pasco", "Cusco"),
+                  Country = "Peru",
+                  Surname = "Monteagudo Mendoza"
+                )
+              ) %>%
+              bind_rows(
+                tibble(
+                  Name = "Rodolfo Vásquez Martínez",
                   Sequence_affiliations = 1,
-                  `E-Mail` = c("amonteagudomendoza@gmail.com", "neotaxon@yahoo.com"),
-                  `Department/Institute/Faculty` =
-                    "",
+                  `E-Mail` = "neotaxon@yahoo.com",
+                  `Department/Institute/Faculty` = "",
                   `University/Institution` = "Jardín Botánico de Missouri Oxapampa",
                   Street = "Bolognesi Mz-E-6",
                   `Postal code` = NA,
                   Town = "Oxapampa, Pasco",
                   Country = "Peru",
-                  Surname = c("Monteagudo Mendoza", "Vásquez Martínez")
+                  Surname = "Vásquez Martínez"
                 )
               ) %>%
               bind_rows(
@@ -334,7 +372,8 @@ affiliations <- first %>%
                                             "Alicia T.R. Acosta", 
                                             "Bruno Hérault", 
                                             'Petr Petřík', 
-                                            "Donald Waller"))) %>% 
+                                            "Donald M. Waller", 
+                                            "Yves Bergeron"))) %>%  ## was custodian when writing the paper
               ##
               bind_rows(optins) %>% 
               bind_rows(optin2.aff) %>% 
@@ -368,6 +407,16 @@ affiliations <- first %>%
   ungroup() %>% 
   ## correct typo
   mutate(name=replace(name, list=name=="Andraž Carni", values="Andraž Čarni"))
+  
+affiliations <- affiliations0 %>% 
+## Update affiliation by Tsipe Aavik & Martin Zobel
+  mutate(`affiliations`= replace(`affiliations`,
+                              list =  name %in% c("Tsipe Aavik", "Martin Zobel"),
+                              values = (affiliations0 %>% filter(name=="Meelis Pärtel") %>% pull(`affiliations`)))) %>% 
+  mutate(orcid= replace(orcid,
+                        list =  name=="Tsipe Aavik", 
+                        values = "0000-0001-5232-3950"))
+
 
 
 #### 2.4 opt-out ####
@@ -377,7 +426,8 @@ affiliations <- affiliations %>%
                       "Ching-Feng Li", 
                       "Kim Sarah Jacobsen",
                       "Desalegn Wana", 
-                      "Milan Valachovič")) 
+                      "Milan Valachovič", 
+                      "Philippe Marchand")) #Not yet custodian when writing the paper
 
 
 #### 3. Create metadata.yaml file ####
@@ -451,8 +501,9 @@ affiliations %>%
   unite(name, name, orcid, sep=", ") %>% 
   mutate(name=str_remove(name, pattern=" NA$")) %>% 
   mutate(name=paste0(name, "\n")) %>% 
-  pull(name) %>% 
-  cat()
+  #pull(name) %>% 
+  #cat() %>% 
+  View()
   
 
 
