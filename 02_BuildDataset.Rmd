@@ -489,6 +489,7 @@ header.oa <- header.oa %>%
   mutate_at(.vars=vars(starts_with("Height") & contains("shrubs")),  
             ~ifelse(.>=10|.<0, NA, .)) %>% 
   mutate(`Relevé area (m²)`=ifelse(`Relevé area (m²)`<0, NA, `Relevé area (m²)`)) %>% 
+  mutate(`Cover bare soil (%)`=ifelse(`Cover bare soil (%)`<0, NA, `Cover bare soil (%)`)) %>% 
   mutate(`Date of recording`=replace(`Date of recording`, 
                                      list=`Date of recording`> as.Date('2016-01-01'), 
                                      NA)) %>% 
