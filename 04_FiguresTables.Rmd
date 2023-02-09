@@ -200,7 +200,7 @@ fig1_panel <- plot_grid(Figure1a, NULL,
                           theme(legend.position = "none"), fig1.leg,
                         nrow=2, ncol=2, byrow = T, #labels = c("a","", "b", ""),
                         rel_widths = c(0.84,0.16))
-ggsave("_output/figure1.png", plot=fig1_panel, width=5.5, height=5, units="in", dpi=300)
+ggsave("_output/figure1.pdf", plot=fig1_panel, width=5.5, height=5, units="in", dpi=300)
 fig1_panel
 ```
 
@@ -441,7 +441,7 @@ panel.out1 <-
             nrow=2, rel_heights = c(1,1.5), align="v")
           
 
-ggsave(filename = "_output/figure2.png", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
+ggsave(filename = "_output/figure2.tiff", width=8, height=5.6, units = "in", dpi=300, plot=panel.out1)
 
 panel.out1
 ```
@@ -533,7 +533,7 @@ Figure 3 - Panel
 #Make a panel with the two plots
 panel.biomes <- cowplot::plot_grid( biome.schu, whitt.biome, nrow=1, 
                                     align = "h", rel_widths = c(0.5, .5))
-ggsave(filename="_output/figure3.png", plot = panel.biomes, width = 10, height=4, units="in")
+ggsave(filename="_output/figure3.tiff", plot = panel.biomes, width = 10, height=4, units="in", dpi=300)
 panel.biomes
 ```
 
@@ -582,7 +582,7 @@ ggpca3 <- ggplot(data=mydata) +
   ylab(paste("PC2 (", varexpl[2], "%)\n (dry to wet)", sep="")) + 
   ylim(c(-6,22))
 
-ggsave("_output/figureS1.png", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
+ggsave("_output/figureS1.pdf", plot = ggpca3, width=5.7, height=7, unit="in", dpi=300)
 ggpca3
 ```
 
