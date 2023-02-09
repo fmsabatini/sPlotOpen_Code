@@ -2,7 +2,7 @@
 title: "Appendix 1 - sPlotOpen - Demo"
 author: "Francesco Maria Sabatini, Jonathan Lenoir, Helge Bruelheide"
 date: "07/04/2021"
-output: pdf_document
+output: html_document
 ---
 
 Appendix to the paper: Sabatini, Lenoir et al., sPlotOpen – An environmentally-balanced, open-access, global dataset of vegetation plots. *Global Ecology and Biogeography*.
