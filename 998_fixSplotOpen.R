@@ -3,14 +3,6 @@ library(tidyverse)
 ## Load sPlotOpen data
 load("~/share/groups/sPlot/releases/_sPlotOpenDB/sPlotOpen.RData")
 
-# Fix header.oa based on Issue #6
-# https://github.com/fmsabatini/sPlotOpen_Code/issues/6
-header.oa <- header.oa %>%    
-  mutate_at(vars(starts_with('Cover')),   
-            .funs=~(ifelse(. > 100, 100, .)))
-
-
-
 # Fix DT2 and CWM based on Issue #7
 # https://github.com/fmsabatini/sPlotOpen_Code/issues/7
 
@@ -49,7 +41,7 @@ checking <- DT2.oa %>%
             by="PlotObservationID")
 plot(checking[,2:3])
 ## There are minor mismatches, probably due to taxonomic standardization
-## The most series seems plots 56497    NADUGANI - Unclear why
+## The most serious seems plots 56497    NADUGANI - Unclear why
 
 
 
@@ -75,15 +67,17 @@ DT2.salvias <- DT2.salvias0 %>%
   # some string cleaning
   mutate(Original_species=str_remove(`Species name`, pattern = " species$")) %>% 
   mutate(Original_species=str_remove(Original_species, " \\[CM$| \\[Derris$| subf\\.$| RS$| SP\\:$| M$| NPZ$| LC$")) %>% 
+  # Try matching both with original species name, and with the clean version of the same string from the Backbone
   left_join(Backbone %>% 
               dplyr::select(Name_sPlot_TRY, Name_short) %>% 
               distinct(), 
             by=c("Original_species" = "Name_sPlot_TRY")) %>% 
-  left_join(Backbone %>% 
+   left_join(Backbone %>% 
               dplyr::select(Name_submitted, Name_short2 = Name_short) %>% 
               distinct(), 
             by=c("Original_species" = "Name_submitted")) %>% 
   mutate(Name_short=coalesce(Name_short, Name_short2)) %>% 
+  # replace all entries returning 'No suitable match' as NAs
   mutate(Name_short = replace(Name_short, 
                               list=str_detect(Name_short, "suitable"), 
                               values=NA)) %>% 
@@ -95,7 +89,7 @@ DT2.salvias <- DT2.salvias0 %>%
                 Species = Name_short, 
                 Original_species = `Species name`, 
                 #Layer, 
-                ## The stem count and the TV2 species number seem reversed!
+                ## The column names of stem count and the TV2 species number seem reversed!
                 Original_abundance = `TV2 species nr`, 
                 Abundance_scale = `Cover code`, 
                 Relative_cover, 
@@ -128,10 +122,12 @@ taxon.groups <- DT2.salvias %>%
             by="Genus") %>% 
   distinct(Species, .keep_all = T) %>% 
   dplyr::select(-Genus)
+#27 Nas out of 7222
 
 DT2.salvias <- DT2.salvias %>% 
   # attach taxon group info from Backbone 3.0
   left_join(taxon.groups, by="Species") %>% 
+  # exclue non vascular plants
   filter(is.na(Taxon.group) | 
            !Taxon.group %in% c("Alga", "Lichen", "Moss")) %>% 
   # calculate relative cover
@@ -146,7 +142,7 @@ dim(DT2.salvias)
 
 
 
-### Delete wrong entries from DT2.oa and replace with correct salvias
+### Delete wrong entries from DT2.oa and replace with correct salvias data
 DT2.oa.out <- DT2.oa %>% 
   filter(!PlotObservationID %in% tofix$PlotObservationID) %>% 
   bind_rows(DT2.salvias %>% 
@@ -225,26 +221,33 @@ CWM_CWV.oa.salvias <- header.oa %>%
   rename_all(.funs=~gsub('\\.', '_', x = .))
 
 dim(CWM_CWV.oa.salvias)
+dim(header.oa)
 
 ## Check CWM correlations
-
 plot(CWM_CWV.oa$LeafArea_CWM, 
      CWM_CWV.oa.salvias$LeafArea_CWM, 
      col = (CWM_CWV.oa %>% 
                     pull(PlotObservationID) %in% tofix$PlotObservationID + 1))
+## All identical, except SALVIAS data, marked in pink
+
+
+# Fix header.oa based on Issue #6
+# https://github.com/fmsabatini/sPlotOpen_Code/issues/6
+header.oa <- header.oa %>%    
+  mutate_at(vars(starts_with('Cover')),   
+            .funs=~(ifelse(. > 100, 100, .)))
 
 
 ### Export
 DT2.oa <- DT2.oa.out
 CWM_CWV.oa <- CWM_CWV.oa.salvias
-
-path <- "_sPlotOpenDBv2"
+path <- "_sPlotOpenDBv12"
 save(DT2.oa, header.oa, metadata.oa, CWM_CWV.oa, reference.oa, sPlotOpen_citation, file = file.path(path, "sPlotOpen.RData"))
 
 ## Export to csv files
 write_delim(DT2.oa, file = file.path(path, "sPlotOpen_DT.txt"), delim="\t")
 write_delim(CWM_CWV.oa, file = file.path(path, "sPlotOpen_CWM_CWV.txt"), delim="\t")
-
+write_delim(header.oa, file = file.path(path, "sPlotOpen_header.txt"), delim="\t")
     
        
        
