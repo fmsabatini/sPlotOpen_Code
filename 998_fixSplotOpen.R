@@ -153,6 +153,28 @@ dim(DT2.oa)
 dim(DT2.oa.out)
 
 
+### Check what the 2 thousand rows were before
+#species in old version (with wrong SALVIA plots) but not in the corrected version
+setdiff(DT2.oa %>% distinct(Species) %>% arrange(Species) %>% pull(),
+        DT2.oa.out %>% distinct(Species) %>% arrange(Species) %>% pull())
+#504 species were excluded
+
+#species in the corrected version that were not present in the old version
+setdiff(DT2.oa.out %>% distinct(Species) %>% arrange(Species) %>% pull(),
+        DT2.oa %>% distinct(Species) %>% arrange(Species) %>% pull())
+#352 new species were included
+
+
+#selecting random tropical species for closer inspection
+header.oa %>% filter(PlotObservationID %in%
+                       c(DT2.oa %>% filter(Species == 'Bauhinia divaricata') %>% pull(PlotObservationID))) %>% 
+  View()
+
+
+header.oa %>% filter(PlotObservationID %in%
+                       c(DT2.oa.out %>% filter(Species == 'Tabebuia rosea') %>% pull(PlotObservationID))) %>% 
+  View()
+
 
 ### Compute CWM\CWV for DT2.salvias
 #Load species level gap-filled trait data
