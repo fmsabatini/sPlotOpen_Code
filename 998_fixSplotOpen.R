@@ -1,7 +1,7 @@
 library(tidyverse)
 
 ## Load sPlotOpen data
-load("~/share/groups/sPlot/releases/_sPlotOpenDB/sPlotOpen.RData")
+load("~/share/groups/sPlot/releases/_sPlotOpenDB/v10/sPlotOpen.RData")
 
 # Fix DT2 and CWM based on Issue #7
 # https://github.com/fmsabatini/sPlotOpen_Code/issues/7
@@ -106,7 +106,7 @@ DT2.salvias %>%
 #Complement taxon group using info from sPlot 3.0 
 ## Assign genera to taxon group
 taxon.groups <- DT2.salvias %>% 
-  as.tbl() %>% 
+  as_tibble() %>% 
   distinct(Species) %>% 
   mutate(species2=Species) %>% 
   separate(species2, into=c("Genus"), sep=" ") %>% 
@@ -263,7 +263,7 @@ header.oa <- header.oa %>%
 ### Export
 DT2.oa <- DT2.oa.out
 CWM_CWV.oa <- CWM_CWV.oa.salvias
-path <- "_sPlotOpenDBv12"
+path <- "_sPlotOpenDBv20"
 save(DT2.oa, header.oa, metadata.oa, CWM_CWV.oa, reference.oa, sPlotOpen_citation, file = file.path(path, "sPlotOpen.RData"))
 
 ## Export to csv files
