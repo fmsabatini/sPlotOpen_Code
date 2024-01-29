@@ -57,10 +57,10 @@ write("R_USER = /data/sPlot/users/Francesco/_tmp", file=file.path(Sys.getenv('R_
 
 Import and fix sPlot data. Import and attach database-level information and [GIVD](https://www.givd.info/) codes. 
 ```{r, cache=T, results="hide", message=F, warning=F}
-load("/data/sPlot/releases/sPlot2.1/DT2_20161025.RData")
-load("/data/sPlot/releases/sPlot2.1/sPlot_header_20161124.RData")
+load("~/share/groups/splot/releases/sPlot2.1/DT2_20161025.RData")
+load("~/share/groups/splot/releases/sPlot2.1/sPlot_header_20161124.RData")
 #fix header data
-source("/data/sPlot/users/Francesco/_sPlot_Management/Fix.header.R")
+source("~/share/groups/splot/users/Francesco/_sPlot_Management/Fix.header.R")
 header <- fix.header(header, exclude.sophy = F)
 ```
 Import database level answers from custodians. This table reports whether the plots from a given dataset can be released open-access without condition (Yes); whether this is true only for a set of manually selected plots (Conditional); or cannot be used (No).
@@ -89,11 +89,11 @@ Mark usable plots from AF-00-008, as last-minute approved.
 tava.keywords <- paste0(c("Azagny", "Djouroutou", "GEPRENAF", "Grebo", "Kayan", "Sapo", "sobeya", "Tai-E", "Tai-R"), collapse="|")
 
 tavaplots <- read_delim("_data/Update_TavaApes/tava_header.csv", delim="\t") %>% 
-  dplyr::select(PlotObservationID, `Original nr in database`) %>% 
+  dplyr::select(PlotObservationID, `Original nr in database...101`) %>% 
   filter(PlotObservationID %in% (header %>% 
                                    filter(`GIVD ID`=="AF-00-008") %>% 
                                    pull(PlotObservationID))) %>% 
-  filter(grepl(pattern=tava.keywords, x = `Original nr in database`))
+  filter(grepl(pattern=tava.keywords, x = `Original nr in database...101`))
 
 ```
 Add additional plots to the usable list, from Luis Cayuela
@@ -185,7 +185,7 @@ Out of the `r length(sel123[[1]])` plots selected in the first run of the resamp
 Load PCA data
 ```{r}
 load("_data/pca3.RData") ### PCA ordination of the world
-path.sPlot <- "/data/sPlot2.0/"
+path.sPlot <- "~/share/groups/splot/releases/sPlot2.0/"
 load(paste(path.sPlot, "splot.world2.RData", sep="/")) ## environmental data of the world at 2.5 res
 ```
 
@@ -355,7 +355,12 @@ selected.reserves <- selected.reserves %>%
   filter(reserve==T) %>% 
   group_by(pc_cellID) %>% 
   mutate(reserve.available=min(reserve.needed, reserve.available)) %>% 
-  sample_n(reserve.available)
+  #slice_sample(n=reserve.available)
+  #mutate(nn = n()) %>% 
+  mutate(samp = sample(n())) %>%
+  filter(samp <= reserve.available) %>%
+  dplyr::select(-samp) %>% 
+  ungroup()
 ```
 
 ```{r, echo=F}
@@ -577,8 +582,8 @@ header.oa <- header.oa %>%
 ### Formations
 For those plots being classified based on the EUNIS codes, we used a cross-link table to use EUNIS to assign vegetation types and naturalness, but only when these columns are empty. 
 ```{r}
-eunis.key <- xlsx::read.xlsx("/data/sPlot/users/Francesco/sPlot3/_input/EUNIS_WFT.xlsx", 
-                       sheetIndex = "Sheet1", endRow = 246) %>% 
+eunis.key <- openxlsx::read.xlsx("~/share/groups/splot/users/Francesco/sPlot3/_input/EUNIS_WFT.xlsx", 
+                       sheet = "Sheet1") %>% 
   dplyr::select(EUNIS_code, NATURALNESS:SPARSE_VEG) %>% 
   mutate(EUNIS_code=as.character(EUNIS_code)) %>% 
   rename(ESY=EUNIS_code, 
@@ -772,8 +777,8 @@ plotinfo.raw <- read_delim("_data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test2.c
 ### Dataset-level biblio-references
 Import dataset-level BibTex reference list and database-level information
 ```{r, message=F}
-bib.db <- bib2df("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
-databases <- read_csv("/data/sPlot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
+bib.db <- bib2df("~/share/groups/splot/users/Francesco/_sPlot_Management/Consortium/sPlot_References.bib")
+databases <- read_csv("~/share/groups/splot/users/Francesco/_sPlot_Management/Consortium/Databases.out.csv")
 
 plotinfo.dbref <- header.oa %>% 
   dplyr::select(PlotObservationID, GIVD_ID) %>% 
@@ -1160,12 +1165,29 @@ read_lines(filename, n_max = 20)
 
 Complement taxon group using info from sPlot 3.0 and cross-matching congeneric species
 ```{r, warning=F}
+#load Backbone sPlot 3.0
+load("~/share/groups/splot/releases/sPlot3.0/Backbone3.0.RData")
+
+#Ancillary function
+# Combine cover accounting across species and layers of each plot
+## needed as there are few plots where the same species was recorded multiple times. 
+combine.cover <- function(x){
+    while (length(x)>1){
+      x[2] <- x[1]+(100-x[1])*x[2]/100
+      x <- x[-1]
+    }
+  return(x)
+}
+
 DT.oa <- DT2 %>% 
-  filter(PlotObservationID %in% unique(header.oa$PlotObservationID))
+  filter(PlotObservationID %in% unique(header.oa$PlotObservationID)) %>% 
+  group_by(PlotObservationID, species, Taxon.group, Matched.concept, Layer) %>% 
+  summarize(Cover=combine.cover(Cover)) %>%
+  ungroup()
+    
 rm(DT2)
 
-#load Backbone sPlot 3.0
-load("/data/sPlot/releases/sPlot3.0/Backbone3.0.RData")
+
 
 ## Assign genera to taxon group
 taxon.groups <- DT.oa %>% 
@@ -1209,6 +1231,7 @@ DT2.oa <- DT.oa %>%
   mutate(Taxon.group=coalesce(Taxon.group.x, Taxon.group.y)) %>% 
   dplyr::select(-Taxon.group.x, -Taxon.group.y, -Genus)
 
+dim(DT.oa)
 dim(DT2.oa)
 table(DT2.oa$Taxon.group, exclude = NULL)
 ```
@@ -1221,9 +1244,9 @@ DT2.oa <- DT2.oa %>%
            !Taxon.group %in% c("Alga", "Lichen", "Moss")) %>% 
   left_join({.} %>%
               group_by(PlotObservationID) %>% 
-              summarize(tot.cover=sum(Relative.cover), .groups = 'drop'), 
+              summarize(tot.cover=sum(Cover), .groups = 'drop'), 
             by=c("PlotObservationID")) %>% 
-  mutate(Relative.cover=Relative.cover/tot.cover) %>% 
+  mutate(Relative.cover=Cover/tot.cover) %>% 
   dplyr::select(-tot.cover)
 ```
 The field `Layer` is always zero. Delete.
@@ -1253,7 +1276,7 @@ This information is stored in a working copy of the DT table, before standardiza
 
 ```{r}
 DTraw <- read_delim(
-  "/data/sPlot2.0/sPlot_2015_07_29_species.csv",
+  "~/share/groups/splot/releases/sPlot2.0/sPlot_2015_07_29_species.csv",
   delim = "\t",
   col_types = cols(
     PlotObservationID = col_double(),
@@ -1361,7 +1384,8 @@ Attach fields `Ab_scale` and `Abundance` to DT2.oa. Rename columns.
 ```{r}
 DT2.oa <- DT2.oa %>% 
   left_join(DTraw %>% 
-              dplyr::select(PlotObservationID, Matched.concept=`Matched concept`, Ab_scale, Abundance), 
+              dplyr::select(PlotObservationID, Matched.concept=`Matched concept`, Ab_scale, Abundance) %>% 
+              distinct(), 
             by=c("PlotObservationID", "Matched.concept")) %>% 
   dplyr::select(PlotObservationID, Species=species, Original_species=Matched.concept, 
                 Taxon_group=Taxon.group, Original_abundance=Abundance, Abundance_scale=Ab_scale, Relative_cover=Relative.cover)
@@ -1423,7 +1447,7 @@ congo.new <- congo.new %>%
 Correct species names based on sPlot v2.1 Backbone
 ```{r}
 ## load backbone
-load("/data/sPlot/releases/sPlot2.1/backbone.splot2.1.try3.is.vascular.Rdata")
+load("~/share/groups/splot/releases/sPlot2.1/backbone.splot2.1.try3.is.vascular.Rdata")
 
 ## join names from backbone to congo.new
 congo.new <- congo.new %>% 
@@ -1835,7 +1859,7 @@ knitr::kable(DT2.oa %>%
 
 Load species level gap-filled trait data
 ```{r}
-load("/data/sPlot2.0/TRY.all.mean.sd.3.by.genus.species.Rdata")
+load("~/share/groups/splot/releases/sPlot2.0/TRY.all.mean.sd.3.by.genus.species.Rdata")
 TRY <- TRY.all.mean.sd.3.by.genus.species
 ```
 
