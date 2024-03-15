@@ -761,18 +761,24 @@ plotinfo.raw <- read_delim("_data/PlotLevelInfo/TV3_PlotLevelInfo_Export_test2.c
                              Remarks = col_character(),
                              `Original nr in database` = col_character(),
                              Collection = col_character(),
-                             Dataset = col_character(),
+                             `Dataset...14` = col_character(),
                              SURVEY = col_character(),
                              Longitude = col_double(),
                              Latitude = col_double(),
                              `Location uncertainty (m)` = col_double(),
-                             Dataset_1 = col_character(),
+                             `Dataset...65` = col_character(),
                              GUID = col_character(), 
                              DB_OWNER = col_character(),
                              ORIG_DB = col_character()
                            )) %>% 
   #drop empty field
-  dplyr::select(where(~ !(all(is.na(.)) | all(. == ""))))
+  dplyr::select(where(~ !(all(is.na(.)) | all(. == "")))) %>% 
+  rename(Dataset = Dataset...14,
+         Dataset_1 = Dataset...65, 
+         TAB_NR=`TAB_NR...30`, 
+         TAB_NR_1=`TAB_NR...49`,
+         ORIG_ID=`ORIG_ID...27`, 
+         ORIG_ID_1=`ORIG_ID...34`)
 ```
 ### Dataset-level biblio-references
 Import dataset-level BibTex reference list and database-level information
@@ -992,7 +998,8 @@ plotinfo.biblio <- plotinfo.raw %>%
   mutate(Biblioreference=coalesce(Fullref, Biblioreference, `Biblio reference`, PUBL, THESIS)) %>% 
   dplyr::select(PlotObservationID, Biblioreference) %>% 
   left_join(reference.oa %>% 
-              dplyr::select(Fullref, BIBTEXKEY), by=c("Biblioreference"="Fullref")) 
+              dplyr::select(Fullref, BIBTEXKEY) %>% 
+              distinct(Fullref, .keep_all=T), by=c("Biblioreference"="Fullref")) 
 dim(plotinfo.biblio)
 ```
 Biblioreference information exists for `r plotinfo.biblio %>% filter(!is.na(Biblioreference)) %>% nrow()` plots.
@@ -1163,7 +1170,8 @@ read_lines(filename, n_max = 20)
 
 ## DT Table
 
-Complement taxon group using info from sPlot 3.0 and cross-matching congeneric species
+Complement taxon group using info from sPlot 3.0 and cross-matching congeneric species  
+The field `Layer` is always zero. Delete.
 ```{r, warning=F}
 #load Backbone sPlot 3.0
 load("~/share/groups/splot/releases/sPlot3.0/Backbone3.0.RData")
@@ -1179,13 +1187,15 @@ combine.cover <- function(x){
   return(x)
 }
 
+
+
 DT.oa <- DT2 %>% 
   filter(PlotObservationID %in% unique(header.oa$PlotObservationID)) %>% 
-  group_by(PlotObservationID, species, Taxon.group, Matched.concept, Layer) %>% 
+  group_by(PlotObservationID, species, Taxon.group, Matched.concept) %>% 
   summarize(Cover=combine.cover(Cover)) %>%
   ungroup()
     
-rm(DT2)
+#rm(DT2)
 
 
 
@@ -1236,24 +1246,14 @@ dim(DT2.oa)
 table(DT2.oa$Taxon.group, exclude = NULL)
 ```
 
-Clean up `DT2.oa` from all non vascular plant records and recalculate relative covers.
-
+Clean up `DT2.oa` from all non vascular plant records. 
 ```{r}
 DT2.oa <- DT2.oa %>% 
   filter(is.na(Taxon.group) | 
-           !Taxon.group %in% c("Alga", "Lichen", "Moss")) %>% 
-  left_join({.} %>%
-              group_by(PlotObservationID) %>% 
-              summarize(tot.cover=sum(Cover), .groups = 'drop'), 
-            by=c("PlotObservationID")) %>% 
-  mutate(Relative.cover=Cover/tot.cover) %>% 
-  dplyr::select(-tot.cover)
+           !Taxon.group %in% c("Alga", "Lichen", "Moss"))
+dim(DT2.oa)
 ```
-The field `Layer` is always zero. Delete.
-```{r}
-DT2.oa <- DT2.oa %>% 
-  dplyr::select(-Layer)
-```
+
 
 ### Abundance and cover data
 
@@ -1293,6 +1293,7 @@ DTraw <- read_delim(
     x_ = col_character()
   )) %>% 
   filter(PlotObservationID %in% header.oa$PlotObservationID)
+
 ```
 
 Create `Ab_scale` field
@@ -1384,11 +1385,27 @@ Attach fields `Ab_scale` and `Abundance` to DT2.oa. Rename columns.
 ```{r}
 DT2.oa <- DT2.oa %>% 
   left_join(DTraw %>% 
-              dplyr::select(PlotObservationID, Matched.concept=`Matched concept`, Ab_scale, Abundance) %>% 
-              distinct(), 
+              dplyr::select(PlotObservationID, Matched.concept=`Matched concept`, Ab_scale, Abundance) %>%
+              ## a few species are duplicated in plots - combine ther covers
+              group_by(PlotObservationID, Matched.concept, Ab_scale) %>% 
+              summarize(Abundance=combine.cover(Abundance)) %>%
+              ungroup() %>% 
+              ## and make sure that if Ab_scale was pa, the output stays 0-1
+              mutate(Abundance=replace(Abundance, 
+                                       list=Ab_scale=="pa", 
+                                       values=1)), 
             by=c("PlotObservationID", "Matched.concept")) %>% 
+    ## recalculate relative Cover
+    left_join({.} %>%
+              group_by(PlotObservationID) %>% 
+              summarize(tot.abundance=sum(Abundance), .groups = 'drop'), 
+            by=c("PlotObservationID")) %>% 
+  mutate(Relative_cover=Abundance/tot.abundance) %>% 
   dplyr::select(PlotObservationID, Species=species, Original_species=Matched.concept, 
-                Taxon_group=Taxon.group, Original_abundance=Abundance, Abundance_scale=Ab_scale, Relative_cover=Relative.cover)
+                Taxon_group=Taxon.group, Original_abundance=Abundance, Abundance_scale=Ab_scale, 
+                Relative_cover)
+       
+dim(DT2.oa)
 ```
 
 ### Update individual datasets
@@ -1425,13 +1442,15 @@ header.TV <- read_delim(file = "_data/sPlot-2.1_header.csv", delim = "\t",
                                         PlotID = col_double(),
                                         `TV2 relevé number` = col_double(),
                                         `Original nr in database` = col_character(),
-                                        ORIGDB_NR = col_character(),
-                                        ORIGDB_NR_1 = col_character(),
+                                        `ORIGDB_NR...5` = col_character(),
+                                        `ORIGDB_NR...6` = col_character(),
                                         ORIG_REL_N = col_character(),
                                         Longitude = col_double(),
                                         Latitude = col_double(),
                                         `Location uncertainty (m)` = col_double(),
-                                        Dataset = col_character()))
+                                        Dataset = col_character())) %>% 
+  rename(ORIGDB_NR = `ORIGDB_NR...5`, 
+         ORIGDB_NR_1= `ORIGDB_NR...6`)
 
 header.sel.TV <- header.oa %>%
   dplyr::select(PlotObservationID, GIVD_ID) %>% 
@@ -1440,7 +1459,7 @@ header.sel.TV <- header.oa %>%
             by="PlotObservationID")
 
 congo.new <- congo.new %>% 
-  inner_join(header.sel.TV, by=c("Site"="Original nr in database")) %>% 
+  inner_join(header.sel.TV , by=c("Site"="Original nr in database")) %>% 
   relocate(PlotObservationID, .before=Site)
 ```
 
@@ -1730,7 +1749,7 @@ dim(DT2.oa)
 Replace with data received from the custodians in 2019. This data contain less unidentified species.
 ```{r}
 #Import data from sPlot 3.0
-load("/data/sPlot/releases/sPlot3.0/header_sPlot3.0.RData")
+load("~/share/groups/splot/releases/sPlot3.0/header_sPlot3.0.RData")
 header3.0 <- header
 rm(header)
 ```
@@ -1773,7 +1792,7 @@ head(ID.key)
 Extract plot observations from DT in sPlot 3.0 to replace those in DT.oa
 ```{r}
 ## DT new 
-load("/data/sPlot/releases/sPlot3.0/DT_sPlot3.0.RData")
+load("~/share/groups/splot/releases/sPlot3.0/DT_sPlot3.0.RData")
 DT3.0 <- DT2 %>% 
   filter(PlotObservationID %in% (ID.key %>% pull(PlotObservationID30)))
 rm(DT2)
@@ -1866,7 +1885,7 @@ TRY <- TRY.all.mean.sd.3.by.genus.species
 Merge species data table with traits, and calculate species coverage for each plot, both based on relative cover, and number of species having trait info.
 ```{r}
 CWM_CWV.oa0 <- DT2.oa %>%
-  as.tbl() %>%
+  as_tibble() %>%
   dplyr::select(PlotObservationID, Species, Relative_cover) %>%
   left_join(TRY %>%
               dplyr::rename(Species=StandSpeciesName) %>%
